@@ -51,6 +51,7 @@ import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.hanging.HangingBreakEvent;
 import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.vehicle.VehicleDestroyEvent;
+import org.bukkit.potion.PotionEffect;
 
 /**
  *
@@ -357,12 +358,13 @@ public class ResidenceEntityListener implements Listener {
 	String world = player.getWorld().getName();
 	if (!perms.playerHas(pname, world, "place", perms.playerHas(pname, world, "build", true))) {
 	    event.setCancelled(true);
-	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("NoPermission"));
+	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("FlagDeny", "build"));
 	}
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onHangingBreak(HangingBreakEvent event) {
+
 	if (!(event instanceof HangingBreakByEntityEvent))
 	    return;
 
@@ -379,9 +381,8 @@ public class ResidenceEntityListener implements Listener {
 	String world = event.getEntity().getWorld().getName();
 	if (!perms.playerHas(pname, world, "destroy", perms.playerHas(pname, world, "build", true))) {
 	    event.setCancelled(true);
-	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("NoPermission"));
+	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("FlagDeny", "build"));
 	}
-
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -481,6 +482,10 @@ public class ResidenceEntityListener implements Listener {
 		if (!blockperms.has("tnt", blockperms.has("explode", true)))
 		    preserve.add(block);
 		continue;
+	    case ENDER_DRAGON:
+		if (!blockperms.has("dragongrief", false))
+		    preserve.add(block);
+		break;
 	    case ENDER_CRYSTAL:
 		if (!blockperms.has("explode", true))
 		    preserve.add(block);
@@ -507,6 +512,19 @@ public class ResidenceEntityListener implements Listener {
     public void onSplashPotion(PotionSplashEvent event) {
 	if (event.isCancelled())
 	    return;
+
+	boolean harmfull = false;
+	mein: for (PotionEffect one : event.getPotion().getEffects()) {
+	    for (String oneHarm : Residence.getConfigManager().getNegativePotionEffects()) {
+		if (oneHarm.equalsIgnoreCase(one.getType().getName())) {
+		    harmfull = true;
+		    break mein;
+		}
+	    }
+	}
+	if (!harmfull)
+	    return;
+
 	Entity ent = event.getEntity();
 	boolean srcpvp = Residence.getPermsByLoc(ent.getLocation()).has("pvp", true);
 	Iterator<LivingEntity> it = event.getAffectedEntities().iterator();

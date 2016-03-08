@@ -16,6 +16,7 @@ import org.bukkit.entity.Horse;
 import org.bukkit.entity.IronGolem;
 import org.bukkit.entity.Ocelot;
 import org.bukkit.entity.Pig;
+import org.bukkit.entity.Rabbit;
 import org.bukkit.entity.Sheep;
 import org.bukkit.entity.Snowman;
 import org.bukkit.entity.Squid;
@@ -25,28 +26,29 @@ import org.bukkit.event.block.BlockPistonRetractEvent;
 import com.bekvon.bukkit.residence.NMS;
 import com.bekvon.bukkit.residence.Residence;
 
-public class v1_7_Couldron implements NMS {
+public class v1_9 implements NMS {
     @Override
     public List<Block> getPistonRetractBlocks(BlockPistonRetractEvent event) {
 	List<Block> blocks = new ArrayList<Block>();
-	blocks.add(event.getBlock());
+	blocks.addAll(event.getBlocks());
 	return blocks;
     }
 
     @Override
     public boolean isAnimal(Entity ent) {
 	return (ent instanceof Horse || ent instanceof Bat || ent instanceof Snowman || ent instanceof IronGolem || ent instanceof Ocelot || ent instanceof Pig
-	    || ent instanceof Sheep || ent instanceof Chicken || ent instanceof Wolf || ent instanceof Cow || ent instanceof Squid || ent instanceof Villager);
+	    || ent instanceof Sheep || ent instanceof Chicken || ent instanceof Wolf || ent instanceof Cow || ent instanceof Squid || ent instanceof Villager
+	    || ent instanceof Rabbit);
     }
 
     @Override
     public boolean isArmorStandEntity(EntityType ent) {
-	return false;
+	return ent == EntityType.ARMOR_STAND;
     }
 
     @Override
     public boolean isArmorStandMaterial(Material material) {
-	return false;
+	return material == Material.ARMOR_STAND;
     }
 
     @SuppressWarnings("deprecation")
@@ -57,7 +59,18 @@ public class v1_7_Couldron implements NMS {
 	case STONE_BUTTON:
 	case WOOD_BUTTON:
 	case WOODEN_DOOR:
+	case SPRUCE_DOOR:
+	case BIRCH_DOOR:
+	case JUNGLE_DOOR:
+	case ACACIA_DOOR:
+	case DARK_OAK_DOOR:
+	case SPRUCE_FENCE_GATE:
+	case BIRCH_FENCE_GATE:
+	case JUNGLE_FENCE_GATE:
+	case ACACIA_FENCE_GATE:
+	case DARK_OAK_FENCE_GATE:
 	case TRAP_DOOR:
+	case IRON_TRAPDOOR:
 	case FENCE_GATE:
 	case PISTON_BASE:
 	case PISTON_STICKY_BASE:
@@ -74,6 +87,7 @@ public class v1_7_Couldron implements NMS {
 	case AIR:
 	case WEB:
 	case STRING:
+	case WALL_BANNER:
 	case WALL_SIGN:
 	case SAPLING:
 	case VINE:
@@ -92,14 +106,27 @@ public class v1_7_Couldron implements NMS {
 
     @Override
     public boolean isSpectator(GameMode mode) {
-	return false;
+	return mode == GameMode.SPECTATOR;
     }
 
     @Override
     public void addDefaultFlags(Map<Material, String> matUseFlagList) {
+	/* 1.8 Doors */
+	matUseFlagList.put(Material.SPRUCE_DOOR, "door");
+	matUseFlagList.put(Material.BIRCH_DOOR, "door");
+	matUseFlagList.put(Material.JUNGLE_DOOR, "door");
+	matUseFlagList.put(Material.ACACIA_DOOR, "door");
+	matUseFlagList.put(Material.DARK_OAK_DOOR, "door");
+	/* 1.8 Fence Gates */
+	matUseFlagList.put(Material.SPRUCE_FENCE_GATE, "door");
+	matUseFlagList.put(Material.BIRCH_FENCE_GATE, "door");
+	matUseFlagList.put(Material.JUNGLE_FENCE_GATE, "door");
+	matUseFlagList.put(Material.ACACIA_FENCE_GATE, "door");
+	matUseFlagList.put(Material.DARK_OAK_FENCE_GATE, "door");
+	matUseFlagList.put(Material.IRON_TRAPDOOR, "door");
     }
 
     public boolean isPlate(Material mat) {
-	return false;
+	return mat == Material.GOLD_PLATE || mat == Material.IRON_PLATE;
     }
 }

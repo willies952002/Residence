@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package com.bekvon.bukkit.residence.protection;
 
 import java.util.ArrayList;
@@ -136,6 +132,8 @@ public class FlagPermissions {
 	addFlag("destroy");
 	addFlag("place");
 	addFlag("bucket");
+	addFlag("bucketfill");
+	addFlag("bucketempty");
 	addFlag("bank");
 	addFlag("beacon");
 
@@ -152,7 +150,10 @@ public class FlagPermissions {
 	addFlag("command");
 
 	addFlag("chat");
+	addFlag("dye");
 	
+	addFlag("enderpearl");
+
 	addResidenceOnlyFlag("trample");
 	addResidenceOnlyFlag("pvp");
 	addResidenceOnlyFlag("fireball");
@@ -196,7 +197,7 @@ public class FlagPermissions {
 
 	// Players will keep hes exp on death
 	addResidenceOnlyFlag("keepexp");
-	
+
 	// Players will keep hes exp on death
 	addResidenceOnlyFlag("mobitemdrop");
 
@@ -208,6 +209,15 @@ public class FlagPermissions {
 
 	// Special flag for making residence as shop
 	addResidenceOnlyFlag("shop");
+
+	// Prevent ender dragon block grief
+	addResidenceOnlyFlag("dragongrief");
+
+	// Prevent snowman snow trail
+	addResidenceOnlyFlag("snowtrail");
+
+	// Auto respawn player
+	addResidenceOnlyFlag("respawn");
 
 	addPlayerOrGroupOnlyFlag("admin");
 
@@ -327,7 +337,7 @@ public class FlagPermissions {
 	    if (uuids == null) {
 		Set<Entry<String, String>> values = cachedPlayerNameUUIDs.entrySet();
 		for (Entry<String, String> value : values) {
-		    if (value.getValue().equalsIgnoreCase(player)) {
+		    if (value.getValue().equals(player)) {
 			uuids = value.getKey();
 			break;
 		    }
@@ -358,7 +368,7 @@ public class FlagPermissions {
 	    }
 	} else {
 	    for (Entry<String, Map<String, Boolean>> one : playerFlags.entrySet()) {
-		if (!one.getKey().equalsIgnoreCase(player))
+		if (!one.getKey().equals(player))
 		    continue;
 		flags = one.getValue();
 		break;
@@ -639,14 +649,14 @@ public class FlagPermissions {
 	for (String keyset : playerFlags.keySet()) {
 	    if (keyset.length() != 36) {
 		String uuid = null;
-		if (OwnerName != null && OwnerName.equalsIgnoreCase(keyset) && !owneruuid.equalsIgnoreCase(Residence.getTempUserUUID()))
+		if (OwnerName != null && OwnerName.equals(keyset) && !owneruuid.equals(Residence.getTempUserUUID()))
 		    uuid = owneruuid;
 		else
 		    uuid = Residence.getPlayerUUIDString(keyset);
 		//				if (OwnerName.equals(keyset)) {
 		if (uuid != null)
 		    converts.put(keyset, uuid);
-		else if (OwnerName != null && !OwnerName.equalsIgnoreCase(keyset))
+		else if (OwnerName != null && !OwnerName.equals(keyset))
 		    Toremove.add(keyset);
 		//				}
 	    } else {
@@ -700,6 +710,25 @@ public class FlagPermissions {
 
     public ArrayList<String> getposibleFlags() {
 	return FlagPermissions.validFlags;
+    }
+
+    public ArrayList<String> getposibleAreaFlags() {
+	return FlagPermissions.validAreaFlags;
+    }
+
+    public List<String> getPosibleFlags(boolean residence, boolean resadmin) {
+	List<String> flags = new ArrayList<String>();
+	for (Entry<String, Boolean> one : Residence.getPermissionManager().getAllFlags().getFlags().entrySet()) {
+	    if (!one.getValue() && !resadmin)
+		continue;
+
+	    if (!residence && !getposibleFlags().contains(one.getKey()))
+		continue;
+
+	    flags.add(one.getKey());
+	}
+
+	return flags;
     }
 
     public String listPlayerFlags(String player) {

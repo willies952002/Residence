@@ -9,7 +9,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import org.bukkit.configuration.file.FileConfiguration;
-
 import org.bukkit.ChatColor;
 
 /**
@@ -67,24 +66,24 @@ public class Language {
 	    if (sentence.length() == 0) {
 		sentence = this.getText(key);
 	    } else {
-		sentence = sentence + " " + this.getText(key).toLowerCase();
+		sentence = sentence + " " + this.getText(key);
 	    }
 	}
 	if (words != null) {
 	    for (int i = 0; i < words.length; i++) {
-		sentence = sentence.replaceAll("%" + (i + 1), words[i]);
+		sentence = sentence.replace("%" + (i + 1), words[i]);
 	    }
 	}
 
 	sentence = ChatColor.translateAlternateColorCodes('&', sentence);
-	
+
 	return sentence;
     }
 
     public static Language parseText(FileConfiguration node, String topkey) {
 	Language newholder = new Language();
 	Set<String> keys = node.getConfigurationSection(topkey).getKeys(false);
-	for (String key : keys) {	    	
+	for (String key : keys) {
 	    newholder.text.put(key, node.getString(topkey + "." + key));
 	}
 	return newholder;

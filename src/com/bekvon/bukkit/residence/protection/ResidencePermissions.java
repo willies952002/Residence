@@ -1,8 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
-
 package com.bekvon.bukkit.residence.protection;
 
 import org.bukkit.ChatColor;
@@ -143,7 +138,7 @@ public class ResidencePermissions extends FlagPermissions {
 		    return false;
 		}
 		String renter = Residence.getRentManager().getRentingPlayer(resname);
-		if (player.getName().equalsIgnoreCase(renter)) {
+		if (player.getName().equals(renter)) {
 		    return true;
 		} else {
 		    return (playerHas(player.getName(), "admin", false));
@@ -151,9 +146,9 @@ public class ResidencePermissions extends FlagPermissions {
 	    }
 	}
 	if (requireOwner) {
-	    return (this.getOwner().equalsIgnoreCase(player.getName()));
+	    return (this.getOwner().equals(player.getName()));
 	}
-	return (playerHas(player.getName(), "admin", false) || this.getOwner().equalsIgnoreCase(player.getName()));
+	return (playerHas(player.getName(), "admin", false) || this.getOwner().equals(player.getName()));
     }
 
     private boolean checkCanSetFlag(Player player, String flag, FlagState state, boolean globalflag, boolean resadmin) {
@@ -171,7 +166,7 @@ public class ResidencePermissions extends FlagPermissions {
 		return false;
 	    }
 	    if (!hasFlagAccess(this.getOwner(), flag)) {
-		player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("OwnerNoPermission"));
+		player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("FlagSetFailed", flag));
 		return false;
 	    }
 	}
@@ -184,6 +179,12 @@ public class ResidencePermissions extends FlagPermissions {
     }
 
     public boolean setPlayerFlag(Player player, String targetPlayer, String flag, String flagstate, boolean resadmin, boolean Show) {
+
+	if (Residence.getPlayerUUID(targetPlayer) == null) {
+	    player.sendMessage("no player by this name");
+	    return false;
+	}
+
 	if (validFlagGroups.containsKey(flag))
 	    return this.setFlagGroupOnPlayer(player, targetPlayer, flag, flagstate, resadmin);
 	FlagState state = FlagPermissions.stringToFlagState(flagstate);
@@ -507,15 +508,16 @@ public class ResidencePermissions extends FlagPermissions {
 	    String flagString = "";
 	    int i = 0;
 	    for (String flag : flags) {
+		i++;
 		if (this.setPlayerFlag(player, target, flag, state, resadmin, false)) {
 		    changed = true;
 		    flagString += flag;
-		    i++;
-		    if (i < flags.size())
+		    if (i < flags.size() - 1)
 			flagString += ", ";
 		}
 	    }
-	    player.sendMessage(ChatColor.GREEN + Residence.getLanguage().getPhrase("FlagSet", flagString + "|" + target + "|" + state));
+	    if (flagString.length() > 0)
+		player.sendMessage(ChatColor.GREEN + Residence.getLanguage().getPhrase("FlagSet", flagString + "|" + target + "|" + state));
 	    return changed;
 	}
 	return false;

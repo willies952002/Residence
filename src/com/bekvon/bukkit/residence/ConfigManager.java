@@ -4,6 +4,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 
+import com.bekvon.bukkit.residence.containers.GuiItems;
+import com.bekvon.bukkit.residence.containers.RandomTeleport;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
 import com.bekvon.bukkit.residence.utils.ParticleEffects;
 
@@ -29,10 +31,6 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 
-/**
- *
- * @author Administrator
- */
 public class ConfigManager {
     protected String defaultGroup;
     protected boolean useLeases;
@@ -49,6 +47,9 @@ public class ConfigManager {
     protected boolean UseClean;
     protected boolean PvPFlagPrevent;
     protected boolean OverridePvp;
+    protected boolean ResCreateCaseSensitive;
+    protected boolean ResTpCaseSensitive;
+    protected boolean BlockAnyTeleportation;
     protected int infoToolId;
     protected int AutoCleanUpDays;
     protected int selectionToolId;
@@ -102,6 +103,7 @@ public class ConfigManager {
     protected String DateFormat;
     protected String TimeZone;
     protected boolean preventBuildInRent;
+    protected boolean PreventSubZoneRemoval;
     protected boolean stopOnSaveError;
     protected boolean legacyperms;
     protected String namefix;
@@ -111,6 +113,8 @@ public class ConfigManager {
     protected boolean NewPlayerFree;
     protected boolean spoutEnable;
     protected boolean AutoMobRemoval;
+    protected boolean BounceAnimation;
+    protected boolean useFlagGUI;
     protected int AutoMobRemovalInterval;
     protected boolean enableLeaseMoneyAccount;
     protected boolean CouldronCompatability;
@@ -131,12 +135,12 @@ public class ConfigManager {
     protected List<String> BlockFallWorlds;
     protected List<String> CleanWorlds;
     protected List<String> FlagsList;
+    protected List<String> NegativePotionEffects;
 
     protected Location KickLocation;
 
-    protected Location rtCenter;
-    protected int rtMaxCoord;
-    protected int rtMinCoord;
+    protected List<RandomTeleport> RTeleport = new ArrayList<RandomTeleport>();
+
     protected int rtCooldown;
     protected int rtMaxTries;
 
@@ -152,7 +156,10 @@ public class ConfigManager {
     protected ParticleEffects OverlapFrame;
     protected ParticleEffects OverlapSides;
 
-    public ConfigManager(FileConfiguration config, FileConfiguration flags, FileConfiguration groups) {
+    private Residence plugin;
+
+    public ConfigManager(FileConfiguration config, FileConfiguration flags, FileConfiguration groups, Residence plugin) {
+	this.plugin = plugin;
 	globalCreatorDefaults = new FlagPermissions();
 	globalResidenceDefaults = new FlagPermissions();
 	globalGroupDefaults = new HashMap<String, FlagPermissions>();
@@ -169,7 +176,7 @@ public class ConfigManager {
     }
 
     public void ChangeConfig(String path, Boolean stage) {
-	File f = new File(Residence.instance.getDataFolder(), "config.yml");
+	File f = new File(plugin.getDataFolder(), "config.yml");
 
 	BufferedReader in = null;
 	try {
@@ -260,7 +267,7 @@ public class ConfigManager {
 
     void UpdateFlagFile() {
 
-	File f = new File(Residence.instance.getDataFolder(), "flags.yml");
+	File f = new File(plugin.getDataFolder(), "flags.yml");
 	YamlConfiguration conf = YamlConfiguration.loadConfiguration(f);
 
 	Set<String> sections = conf.getConfigurationSection("Global.FlagPermission").getKeys(false);
@@ -269,6 +276,30 @@ public class ConfigManager {
 		continue;
 	    conf.createSection("Global.FlagPermission." + one.toLowerCase());
 	    conf.set("Global.FlagPermission." + one.toLowerCase(), false);
+	}
+
+	if (!conf.isConfigurationSection("Global.FlagGui"))
+	    conf.createSection("Global.FlagGui");
+
+	ConfigurationSection guiSection = conf.getConfigurationSection("Global.FlagGui");
+	Set<String> flagGui = guiSection.getKeys(false);
+	for (String one : Locale.FlagList) {
+	    if (flagGui.contains(one.toLowerCase()))
+		continue;
+
+	    String lowOne = one.toLowerCase();
+	    GuiItems uno = null;
+	    try {
+		uno = GuiItems.valueOf(lowOne);
+	    } catch (IllegalArgumentException e) {
+		continue;
+	    }
+	    if (uno == null)
+		continue;
+
+	    guiSection.createSection(lowOne);
+	    guiSection.set(lowOne + ".Id", uno.getId());
+	    guiSection.set(lowOne + ".Data", uno.getData());
 	}
 
 	try {
@@ -280,7 +311,7 @@ public class ConfigManager {
 
     public void UpdateGroupedFlagsFile() {
 
-	File f = new File(Residence.instance.getDataFolder(), "flags.yml");
+	File f = new File(plugin.getDataFolder(), "flags.yml");
 	YamlConfiguration conf = YamlConfiguration.loadConfiguration(f);
 
 	if (!conf.isConfigurationSection("Global.GroupedFlags")) {
@@ -308,7 +339,7 @@ public class ConfigManager {
     @SuppressWarnings("deprecation")
 	void UpdateConfigFile() {
 
-	File f = new File(Residence.instance.getDataFolder(), "config.yml");
+	File f = new File(plugin.getDataFolder(), "config.yml");
 
 	BufferedReader in = null;
 	try {
@@ -360,6 +391,22 @@ public class ConfigManager {
 
 	writer.addComment("Global.Optimizations.DefaultWorld", "Name of your mein residence world. Usualy normal starting world 'World'. Capitalization essential");
 	DefaultWorld = GetConfig("Global.Optimizations.DefaultWorld", defaultWorldName, writer, conf, false);
+
+	writer.addComment("Global.Optimizations.ResCreateCaseSensitive",
+	    "When its true you can create residences with similar names but different capitalization. An example: Village and village are counted as different residences",
+	    "When it's set to false you can't create residences with same names but different capitalizations");
+	ResCreateCaseSensitive = GetConfig("Global.Optimizations.ResCreateCaseSensitive", false, writer, conf);
+
+	writer.addComment("Global.Optimizations.ResTpCaseSensitive",
+	    "When this set to true, when you are performing /res tp command and providing residence name, it should be exactly same as residence name. So in example Village is not same as village",
+	    "When it's set to false you can teleport to residence with name Village even if you executing command /res tp village",
+	    "Don't disable this if you already have some duplicating residences in your database as this will prevent players from teleporting to one of them");
+	ResTpCaseSensitive = GetConfig("Global.Optimizations.ResTpCaseSensitive", true, writer, conf);
+
+	writer.addComment("Global.Optimizations.BlockAnyTeleportation",
+	    "When this set to true, any teleportation to residence where player dont have tp flag, action will be denyied",
+	    "This can prevent from teleporting players to residence with 3rd party plugins like esentials /tpa");
+	BlockAnyTeleportation = GetConfig("Global.Optimizations.BlockAnyTeleportation", true, writer, conf);
 
 	writer.addComment("Global.Optimizations.MaxResCount", "Set this as low as posible depending of residence.max.res.[number] permission you are using",
 	    "In example if you are giving max number of 10 for players, set it to 15, if its 30, set it to 35 just to have some small buffer in case");
@@ -413,6 +460,12 @@ public class ConfigManager {
 	HealInterval = GetConfig("Global.Optimizations.Intervals.Heal", 1, writer, conf);
 	FeedInterval = GetConfig("Global.Optimizations.Intervals.Feed", 5, writer, conf);
 
+	// negative potion effect list
+	writer.addComment("Global.Optimizations.NegativePotionEffects",
+	    "Potions containing one of thos effects will be ignored if residence dont have pvp true flag set");
+	NegativePotionEffects = GetConfig("Global.Optimizations.NegativePotionEffects", Arrays.asList("blindness", "confusion", "harm", "hunger", "poison", "slow",
+	    "slow_digging", "weakness", "wither"), writer, conf, false);
+
 	writer.addComment("Global.MoveCheckInterval", "The interval, in milliseconds, between movement checks.", "Reducing this will increase the load on the server.",
 	    "Increasing this will allow players to move further in movement restricted zones before they are teleported out.");
 	minMoveUpdate = GetConfig("Global.MoveCheckInterval", 500, writer, conf);
@@ -420,23 +473,55 @@ public class ConfigManager {
 	writer.addComment("Global.Tp.TeleportDelay", "The interval, in seconds, for teleportation.", "Use 0 to disable");
 	TeleportDelay = GetConfig("Global.Tp.TeleportDelay", 3, writer, conf);
 
-	writer.addComment("Global.RandomTeleportation.MaxCoord",
-	    "Max coordinate to teleport, setting to 1000, player can be teleported between -1000 and 1000 coordinates");
-	rtMaxCoord = GetConfig("Global.RandomTeleportation.MaxCoord", 1000, writer, conf);
-	writer.addComment("Global.RandomTeleportation.MinCoord",
-	    "If maxcord set to 1000 and mincord to 500, then player can be teleported between -1000 to -500 and 1000 to 500 coordinates");
-	rtMinCoord = GetConfig("Global.RandomTeleportation.MinCoord", 500, writer, conf);
+	if (conf.contains("Global.RandomTeleportation.WorldName")) {
 
-	writer.addComment("Global.RandomTeleportation.WorldName", "World to use this function, set main residence world");
-	String rtWorld = GetConfig("Global.RandomTeleportation.WorldName", defaultWorldName, writer, conf, false);
+	    String path = "Global.RandomTeleportation.";
+	    String WorldName = conf.getString(path + "WorldName", defaultWorldName);
 
-	int rtCenterX = GetConfig("Global.RandomTeleportation.CenterX", 0, writer, conf);
-	int rtCenterZ = GetConfig("Global.RandomTeleportation.CenterZ", 0, writer, conf);
+	    int MaxCoord = conf.getInt(path + "MaxCoord", 1000);
+	    int MinCord = conf.getInt(path + "MinCord", 500);
+	    int CenterX = conf.getInt(path + "CenterX", 0);
+	    int CenterZ = conf.getInt(path + "CenterZ", 0);
 
-	World world = Bukkit.getWorld(rtWorld);
-	rtCenter = new Location(Bukkit.getWorlds().get(0), 0, 63, 0);
-	if (world != null)
-	    rtCenter = new Location(world, rtCenterX, 63, rtCenterZ);
+	    RTeleport.add(new RandomTeleport(WorldName, MaxCoord, MinCord, CenterX, CenterZ));
+
+	    GetConfig("Global.RandomTeleportation." + WorldName + ".MaxCord", MaxCoord, writer, conf);
+	    GetConfig("Global.RandomTeleportation." + WorldName + ".MinCord", MinCord, writer, conf);
+	    GetConfig("Global.RandomTeleportation." + WorldName + ".CenterX", CenterX, writer, conf);
+	    GetConfig("Global.RandomTeleportation." + WorldName + ".CenterZ", CenterZ, writer, conf);
+	} else {
+	    if (conf.isConfigurationSection("Global.RandomTeleportation"))
+		for (String one : conf.getConfigurationSection("Global.RandomTeleportation").getKeys(false)) {
+		    String path = "Global.RandomTeleportation." + one + ".";
+
+		    writer.addComment("Global.RandomTeleportation." + one, "World name to use this feature. Add annother one with appropriate name to enable random teleportation");
+
+		    writer.addComment(path + "MaxCoord", "Max coordinate to teleport, setting to 1000, player can be teleported between -1000 and 1000 coordinates");
+		    int MaxCoord = GetConfig(path + "MaxCoord", 1000, writer, conf);
+		    writer.addComment(path + "MinCord",
+			"If maxcord set to 1000 and mincord to 500, then player can be teleported between -1000 to -500 and 1000 to 500 coordinates");
+		    int MinCord = GetConfig(path + "MinCord", 500, writer, conf);
+		    int CenterX = GetConfig(path + "CenterX", 0, writer, conf);
+		    int CenterZ = GetConfig(path + "CenterZ", 0, writer, conf);
+
+		    RTeleport.add(new RandomTeleport(one, MaxCoord, MinCord, CenterX, CenterZ));
+		}
+	    else {
+		String path = "Global.RandomTeleportation." + defaultWorldName + ".";
+
+		writer.addComment(path + "WorldName", "World to use this function, set main residence world");
+		String WorldName = GetConfig(path + "WorldName", defaultWorldName, writer, conf, false);
+
+		writer.addComment(path + "MaxCoord", "Max coordinate to teleport, setting to 1000, player can be teleported between -1000 and 1000 coordinates");
+		int MaxCoord = GetConfig(path + "MaxCoord", 1000, writer, conf);
+		writer.addComment(path + "MinCord",
+		    "If maxcord set to 1000 and mincord to 500, then player can be teleported between -1000 to -500 and 1000 to 500 coordinates");
+		int MinCord = GetConfig(path + "MinCord", 500, writer, conf);
+		int CenterX = GetConfig(path + "CenterX", 0, writer, conf);
+		int CenterZ = GetConfig(path + "CenterZ", 0, writer, conf);
+		RTeleport.add(new RandomTeleport(WorldName, MaxCoord, MinCord, CenterX, CenterZ));
+	    }
+	}
 
 	writer.addComment("Global.RandomTeleportation.Cooldown", "How long force player to wait before using command again.");
 	rtCooldown = GetConfig("Global.RandomTeleportation.Cooldown", 5, writer, conf);
@@ -454,12 +539,21 @@ public class ConfigManager {
 	writer.addComment("Global.SaveInterval", "The interval, in minutes, between residence saves.");
 	autoSaveInt = GetConfig("Global.SaveInterval", 10, writer, conf);
 
+	// Auto remove old residences
 	writer.addComment("Global.AutoCleanUp.Use", "HIGHLY EXPERIMENTAL residence cleaning on server startup if player is offline for x days.",
 	    "Players can bypass this wih residence.cleanbypass permission node");
 	AutoCleanUp = GetConfig("Global.AutoCleanUp.Use", false, writer, conf);
 	writer.addComment("Global.AutoCleanUp.Days", "For how long player should be offline to delete hes residence");
 	AutoCleanUpDays = GetConfig("Global.AutoCleanUp.Days", 60, writer, conf);
 	writer.addComment("Global.AutoCleanUp.Worlds", "Worlds to be included in check list");
+	AutoCleanUpWorlds = GetConfig("Global.AutoCleanUp.Worlds", Arrays.asList(defaultWorldName), writer, conf, false);
+	
+	writer.addComment("Global.LWC.Use", "HIGHLY EXPERIMENTAL residence cleaning on server startup if player is offline for x days.",
+	    "Players can bypass this wih residence.cleanbypass permission node");
+	AutoCleanUp = GetConfig("Global.AutoCleanUp.Use", false, writer, conf);
+	writer.addComment("Global.LWC.Days", "For how long player should be offline to delete hes LWC protection on residence removal");
+	AutoCleanUpDays = GetConfig("Global.AutoCleanUp.Days", 60, writer, conf);
+	writer.addComment("Global.LWC.Worlds", "Worlds to be included in check list");
 	AutoCleanUpWorlds = GetConfig("Global.AutoCleanUp.Worlds", Arrays.asList(defaultWorldName), writer, conf, false);
 
 	// Flow
@@ -583,6 +677,9 @@ public class ConfigManager {
 	writer.addComment("Global.PreventRentModify", "Setting this to false will allow rented residences to be modified by the renting player.");
 	preventBuildInRent = GetConfig("Global.PreventRentModify", true, writer, conf);
 
+	writer.addComment("Global.PreventSubZoneRemoval", "Setting this to true will prevent subzone deletion when subzone owner is not same as parent zone owner.");
+	PreventSubZoneRemoval = GetConfig("Global.PreventSubZoneRemoval", true, writer, conf);
+
 	writer.addComment("Global.StopOnSaveFault", "Setting this to false will cause residence to continue to load even if a error is detected in the save file.");
 	stopOnSaveError = GetConfig("Global.StopOnSaveFault", true, writer, conf);
 
@@ -659,6 +756,12 @@ public class ConfigManager {
 	    OverlapSides = ParticleEffects.FLAME;
 	    Bukkit.getConsoleSender().sendMessage("Can't find effect for Selected Sides with this name, it was set to default");
 	}
+
+	writer.addComment("Global.BounceAnimation", "Shows particle effect when player are being pushed back");
+	BounceAnimation = GetConfig("Global.BounceAnimation", true, writer, conf);
+
+	writer.addComment("Global.GUI.Enabled", "Enable or disable flag GUI");
+	useFlagGUI = GetConfig("Global.GUI.Enabled", true, writer, conf);
 
 	writer.addComment("Global.GUI.setTrue", "Item id and data to use when flag is set to true");
 
@@ -878,6 +981,18 @@ public class ConfigManager {
 	return OverridePvp;
     }
 
+    public boolean isResTpCaseSensitive() {
+	return ResTpCaseSensitive;
+    }
+
+    public boolean isBlockAnyTeleportation() {
+	return BlockAnyTeleportation;
+    }
+
+    public boolean isResCreateCaseSensitive() {
+	return ResCreateCaseSensitive;
+    }
+
     public int getInfoToolID() {
 	return infoToolId;
     }
@@ -1026,6 +1141,10 @@ public class ConfigManager {
 	return preventBuildInRent;
     }
 
+    public boolean isPreventSubZoneRemoval() {
+	return PreventSubZoneRemoval;
+    }
+
     public boolean stopOnSaveError() {
 	return stopOnSaveError;
     }
@@ -1122,6 +1241,10 @@ public class ConfigManager {
 	return BlockFallWorlds;
     }
 
+    public List<String> getNegativePotionEffects() {
+	return NegativePotionEffects;
+    }
+
     public List<String> getCleanWorlds() {
 	return CleanWorlds;
     }
@@ -1146,16 +1269,8 @@ public class ConfigManager {
 	return GuiRemove;
     }
 
-    public Location getrtCenter() {
-	return rtCenter;
-    }
-
-    public int getrtMaxCoord() {
-	return rtMaxCoord;
-    }
-
-    public int getrtMinCoord() {
-	return rtMinCoord;
+    public List<RandomTeleport> getRandomTeleport() {
+	return RTeleport;
     }
 
     public int getrtCooldown() {
@@ -1168,5 +1283,9 @@ public class ConfigManager {
 
     public int getrtMaxTries() {
 	return rtMaxTries;
+    }
+
+    public boolean BounceAnimation() {
+	return BounceAnimation;
     }
 }

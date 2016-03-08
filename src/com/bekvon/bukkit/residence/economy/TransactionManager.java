@@ -1,8 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
-
 package com.bekvon.bukkit.residence.economy;
 
 import org.bukkit.ChatColor;
@@ -10,7 +5,6 @@ import org.bukkit.ChatColor;
 import com.bekvon.bukkit.residence.protection.CuboidArea;
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.protection.ResidenceManager;
-import com.bekvon.bukkit.residence.signsStuff.SignUtil;
 import com.bekvon.bukkit.residence.permissions.PermissionManager;
 import com.bekvon.bukkit.residence.permissions.PermissionGroup;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
@@ -92,13 +86,12 @@ public class TransactionManager {
 		return;
 	    }
 	}
-	String pname = player.getName();
 	ClaimedResidence area = manager.getByName(areaname);
 	if (area == null) {
 	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("InvalidResidence"));
 	    return;
 	}
-	if (!area.getPermissions().getOwner().equals(pname) && !resadmin) {
+	if (!area.isOwner(player) && !resadmin) {
 	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("NoPermission"));
 	    return;
 	}
@@ -108,7 +101,7 @@ public class TransactionManager {
 	}
 	sellAmount.put(areaname, amount);
 
-	SignUtil.CheckSign(area);
+	Residence.getSignUtil().CheckSign(area);
 
 	player.sendMessage(ChatColor.GREEN + Residence.getLanguage().getPhrase("ResidenceForSale", ChatColor.YELLOW + areaname + ChatColor.GREEN + "|" + ChatColor.YELLOW
 	    + amount + ChatColor.GREEN));
@@ -192,7 +185,7 @@ public class TransactionManager {
 		res.getPermissions().applyDefaultFlags();
 		this.removeFromSale(areaname);
 
-		SignUtil.CheckSign(res);
+		Residence.getSignUtil().CheckSign(res);
 
 		CuboidArea area = res.getAreaArray()[0];
 		Residence.getSelectionManager().NewMakeBorders(player, area.getHighLoc(), area.getLowLoc(), false);
@@ -222,9 +215,9 @@ public class TransactionManager {
 		player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("ResidenceNotForSale"));
 		return;
 	    }
-	    if (area.getPermissions().getOwner().equals(player.getName()) || resadmin) {
+	    if (area.isOwner(player)|| resadmin) {
 		removeFromSale(areaname);
-		SignUtil.CheckSign(area);
+		Residence.getSignUtil().CheckSign(area);
 		player.sendMessage(ChatColor.GREEN + Residence.getLanguage().getPhrase("ResidenceStopSelling"));
 	    } else {
 		player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("NoPermission"));
@@ -236,7 +229,7 @@ public class TransactionManager {
 
     public void removeFromSale(String areaname) {
 	sellAmount.remove(areaname);
-	SignUtil.removeSign(areaname);
+	Residence.getSignUtil().removeSign(areaname);
     }
 
     public boolean isForSale(String areaname) {

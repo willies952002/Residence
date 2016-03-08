@@ -13,46 +13,51 @@ import com.bekvon.bukkit.residence.permissions.PermissionGroup;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 
 public class PlayerManager {
-    private static ConcurrentHashMap<String, ResPlayer> players = new ConcurrentHashMap<String, ResPlayer>();
+    private ConcurrentHashMap<String, ResPlayer> players = new ConcurrentHashMap<String, ResPlayer>();
+    private Residence plugin;
 
-    public static void playerJoin(OfflinePlayer player) {
-	ResPlayer resPlayer = players.get(player.getName().toLowerCase());
+    public PlayerManager(Residence plugin) {
+	this.plugin = plugin;
+    }
+
+    public void playerJoin(OfflinePlayer player) {
+	ResPlayer resPlayer = players.get(player.getName());
 	if (resPlayer == null) {
 	    resPlayer = new ResPlayer(player.getName());
 	    resPlayer.recountRes();
-	    players.put(player.getName().toLowerCase(), resPlayer);
+	    players.put(player.getName(), resPlayer);
 	} else
 	    resPlayer.RecalculatePermissions();
 	return;
     }
 
-    public static ResPlayer playerJoin(String player) {
-	if (!players.containsKey(player.toLowerCase())) {
+    public ResPlayer playerJoin(String player) {
+	if (!players.containsKey(player)) {
 	    ResPlayer resPlayer = new ResPlayer(player);
 	    resPlayer.recountRes();
-	    players.put(player.toLowerCase(), resPlayer);
+	    players.put(player, resPlayer);
 	    return resPlayer;
 	}
 	return null;
     }
 
-    public static void fillList() {
+    public void fillList() {
 	players.clear();
-	Bukkit.getScheduler().runTaskAsynchronously(Residence.instance, new Runnable() {
+	Bukkit.getScheduler().runTaskAsynchronously(plugin, new Runnable() {
 	    @Override
 	    public void run() {
 		for (Player player : Bukkit.getOnlinePlayers()) {
-		    PlayerManager.playerJoin(player);
+		    playerJoin(player);
 		}
 		return;
 	    }
 	});
     }
 
-    public static ArrayList<String> getResidenceList(String player) {
+    public ArrayList<String> getResidenceList(String player) {
 	ArrayList<String> temp = new ArrayList<String>();
 	playerJoin(player);
-	ResPlayer resPlayer = players.get(player.toLowerCase());
+	ResPlayer resPlayer = players.get(player);
 	if (resPlayer != null) {
 	    for (Entry<String, String> one : resPlayer.getResList().entrySet()) {
 		temp.add(one.getKey());
@@ -62,10 +67,10 @@ public class PlayerManager {
 	return temp;
     }
 
-    public static ArrayList<String> getResidenceListString(String player, boolean showhidden) {
+    public ArrayList<String> getResidenceListString(String player, boolean showhidden) {
 	ArrayList<String> temp = new ArrayList<String>();
 	playerJoin(player);
-	ResPlayer resPlayer = players.get(player.toLowerCase());
+	ResPlayer resPlayer = players.get(player);
 	if (resPlayer != null) {
 	    for (Entry<String, String> one : resPlayer.getResList().entrySet()) {
 		if (!showhidden) {
@@ -83,7 +88,7 @@ public class PlayerManager {
 	return temp;
     }
 
-    public static PermissionGroup getGroup(String player) {
+    public PermissionGroup getGroup(String player) {
 	ResPlayer resPlayer = getResPlayer(player);
 	if (resPlayer != null) {
 	    return resPlayer.getGroup();
@@ -91,7 +96,7 @@ public class PlayerManager {
 	return null;
     }
 
-    public static int getMaxResidences(String player) {
+    public int getMaxResidences(String player) {
 	ResPlayer resPlayer = getResPlayer(player);
 	if (resPlayer != null) {
 	    return resPlayer.getMaxRes();
@@ -99,7 +104,7 @@ public class PlayerManager {
 	return -1;
     }
 
-    public static int getMaxSubzones(String player) {
+    public int getMaxSubzones(String player) {
 	ResPlayer resPlayer = getResPlayer(player);
 	if (resPlayer != null) {
 	    return resPlayer.getMaxSubzones();
@@ -107,7 +112,7 @@ public class PlayerManager {
 	return -1;
     }
 
-    public static int getMaxRents(String player) {
+    public int getMaxRents(String player) {
 	ResPlayer resPlayer = getResPlayer(player);
 	if (resPlayer != null) {
 	    return resPlayer.getMaxRents();
@@ -115,17 +120,17 @@ public class PlayerManager {
 	return -1;
     }
 
-    public static ResPlayer getResPlayer(String player) {
+    public ResPlayer getResPlayer(String player) {
 	ResPlayer resPlayer = null;
-	if (players.containsKey(player.toLowerCase()))
-	    resPlayer = players.get(player.toLowerCase());
+	if (players.containsKey(player))
+	    resPlayer = players.get(player);
 	else {
 	    resPlayer = playerJoin(player);
 	}
 	return resPlayer;
     }
 
-    public static void renameResidence(String player, String oldName, String newName) {
+    public void renameResidence(String player, String oldName, String newName) {
 	ResPlayer resPlayer = getResPlayer(player);
 	if (resPlayer != null) {
 	    resPlayer.renameResidence(oldName, newName);
@@ -133,7 +138,7 @@ public class PlayerManager {
 	return;
     }
 
-    public static void addResidence(String player, ClaimedResidence residence) {
+    public void addResidence(String player, ClaimedResidence residence) {
 	ResPlayer resPlayer = getResPlayer(player);
 	if (resPlayer != null) {
 	    resPlayer.addResidence(residence);
@@ -141,16 +146,16 @@ public class PlayerManager {
 	return;
     }
 
-    public static void removeResFromPlayer(OfflinePlayer player, String residence) {
+    public void removeResFromPlayer(OfflinePlayer player, String residence) {
 	removeResFromPlayer(player.getName(), residence);
     }
 
-    public static void removeResFromPlayer(Player player, String residence) {
+    public void removeResFromPlayer(Player player, String residence) {
 	removeResFromPlayer(player.getName(), residence);
     }
 
-    public static void removeResFromPlayer(String player, String residence) {
-	ResPlayer resPlayer = players.get(player.toLowerCase());
+    public void removeResFromPlayer(String player, String residence) {
+	ResPlayer resPlayer = players.get(player);
 	if (resPlayer != null) {
 	    resPlayer.removeResidence(residence);
 	}

@@ -6,12 +6,15 @@
 package com.bekvon.bukkit.residence.selection;
 
 import com.bekvon.bukkit.residence.Residence;
+import com.bekvon.bukkit.residence.containers.SelectionSides;
 import com.bekvon.bukkit.residence.permissions.PermissionGroup;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.CuboidArea;
 import com.bekvon.bukkit.residence.utils.ActionBar;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -28,6 +31,7 @@ public class SelectionManager {
     protected Map<String, Location> playerLoc1;
     protected Map<String, Location> playerLoc2;
     protected Server server;
+    private Residence plugin;
 
     public static Integer id;
     public static HashMap<String, Long> normalPrintMap = new HashMap<String, Long>();
@@ -41,15 +45,17 @@ public class SelectionManager {
 	UP, DOWN, PLUSX, PLUSZ, MINUSX, MINUSZ
     }
 
-    public SelectionManager(Server server) {
+    public SelectionManager(Server server, Residence plugin) {
+	this.plugin = plugin;
 	this.server = server;
 	playerLoc1 = Collections.synchronizedMap(new HashMap<String, Location>());
 	playerLoc2 = Collections.synchronizedMap(new HashMap<String, Location>());
     }
 
-    public void placeLoc1(Player player, Location loc) {
-	if (loc != null) {
-	    playerLoc1.put(player.getName(), loc);
+    public void updateLocations(Player player, Location loc1, Location loc2) {
+	if (loc1 != null && loc2 != null) {
+	    playerLoc1.put(player.getName(), loc1);
+	    playerLoc2.put(player.getName(), loc2);
 	    if (Residence.getConfigManager().isSelectionIgnoreY() && hasPlacedBoth(player.getName())) {
 		this.qsky(player);
 		this.qbedrock(player);
@@ -58,14 +64,27 @@ public class SelectionManager {
 	}
     }
 
-    public void placeLoc2(Player player, Location loc) {
+    public void placeLoc1(Player player, Location loc, boolean show) {
+	if (loc != null) {
+	    playerLoc1.put(player.getName(), loc);
+	    if (Residence.getConfigManager().isSelectionIgnoreY() && hasPlacedBoth(player.getName())) {
+		this.qsky(player);
+		this.qbedrock(player);
+	    }
+	    if (show)
+		this.afterSelectionUpdate(player);
+	}
+    }
+
+    public void placeLoc2(Player player, Location loc, boolean show) {
 	if (loc != null) {
 	    playerLoc2.put(player.getName(), loc);
 	    if (Residence.getConfigManager().isSelectionIgnoreY() && hasPlacedBoth(player.getName())) {
 		this.qsky(player);
 		this.qbedrock(player);
 	    }
-	    this.afterSelectionUpdate(player);
+	    if (show)
+		this.afterSelectionUpdate(player);
 	}
     }
 
@@ -143,7 +162,7 @@ public class SelectionManager {
 	return false;
     }
 
-    public void NewMakeBorders(final Player player, Location OriginalLow, Location OriginalHigh, boolean error) {
+    public void NewMakeBorders(final Player player, final Location OriginalLow, final Location OriginalHigh, final boolean error) {
 
 	if (!Residence.getConfigManager().useVisualizer())
 	    return;
@@ -152,88 +171,199 @@ public class SelectionManager {
 	    normalPrintMap.put(player.getName(), System.currentTimeMillis());
 	else
 	    errorPrintMap.put(player.getName(), System.currentTimeMillis());
-	MakeBorders(player, OriginalLow, OriginalHigh, error);
+	Bukkit.getScheduler().runTaskAsynchronously(plugin, new Runnable() {
+	    @Override
+	    public void run() {
+		MakeBorders(player, OriginalLow, OriginalHigh, error);
+		return;
+	    }
+	});
+    }
+
+    public List<Location> getLocations(Location lowLoc, Location loc, Double TX, Double TY, Double TZ, Double Range, boolean StartFromZero) {
+
+	double eachCollumn = Residence.getConfigManager().getVisualizerRowSpacing();
+	double eachRow = Residence.getConfigManager().getVisualizerCollumnSpacing();
+
+	if (TX == 0D)
+	    TX = eachCollumn + eachCollumn * 0.1;
+	if (TY == 0D)
+	    TY = eachRow + eachRow * 0.1;
+	if (TZ == 0D)
+	    TZ = eachCollumn + eachCollumn * 0.1;
+
+	double CollumnStart = eachCollumn;
+	double RowStart = eachRow;
+
+	if (StartFromZero) {
+	    CollumnStart = 0;
+	    RowStart = 0;
+	}
+
+	List<Location> locList = new ArrayList<Location>();
+
+	if (lowLoc.getWorld() != loc.getWorld())
+	    return locList;
+
+	for (double x = CollumnStart; x < TX; x += eachCollumn) {
+	    Location CurrentX = lowLoc.clone();
+	    if (TX > eachCollumn + eachCollumn * 0.1)
+		CurrentX.add(x, 0, 0);
+	    for (double y = RowStart; y < TY; y += eachRow) {
+		Location CurrentY = CurrentX.clone();
+		if (TY > eachRow + eachRow * 0.1)
+		    CurrentY.add(0, y, 0);
+		for (double z = CollumnStart; z < TZ; z += eachCollumn) {
+		    Location CurrentZ = CurrentY.clone();
+		    if (TZ > eachCollumn + eachCollumn * 0.1)
+			CurrentZ.add(0, 0, z);
+		    double dist = loc.distance(CurrentZ);
+		    if (dist < Range)
+			locList.add(CurrentZ.clone());
+		}
+	    }
+	}
+
+	return locList;
+    }
+
+    public List<Location> GetLocationsWallsByData(Player player, Location loc, Double TX, Double TY, Double TZ, Location lowLoc, SelectionSides Sides,
+	double Range) {
+	List<Location> locList = new ArrayList<Location>();
+
+	// North wall
+	if (Sides.ShowNorthSide())
+	    locList.addAll(getLocations(lowLoc.clone(), loc.clone(), TX, TY, 0D, Range, false));
+
+	// South wall
+	if (Sides.ShowSouthSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(0, 0, TZ), loc.clone(), TX, TY, 0D, Range, false));
+
+	// West wall
+	if (Sides.ShowWestSide())
+	    locList.addAll(getLocations(lowLoc.clone(), loc.clone(), 0D, TY, TZ, Range, false));
+
+	// East wall
+	if (Sides.ShowEastSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(TX, 0, 0), loc.clone(), 0D, TY, TZ, Range, false));
+
+	// Roof wall
+	if (Sides.ShowTopSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(0, TY, 0), loc.clone(), TX, 0D, TZ, Range, false));
+
+	// Ground wall
+	if (Sides.ShowBottomSide())
+	    locList.addAll(getLocations(lowLoc.clone(), loc.clone(), TX, 0D, TZ, Range, false));
+
+	return locList;
+    }
+
+    public List<Location> GetLocationsCornersByData(Player player, Location loc, Double TX, Double TY, Double TZ, Location lowLoc, SelectionSides Sides,
+	double Range) {
+	List<Location> locList = new ArrayList<Location>();
+
+	// North bottom line
+	if (Sides.ShowBottomSide() && Sides.ShowNorthSide())
+	    locList.addAll(getLocations(lowLoc.clone(), loc.clone(), TX, 0D, 0D, Range, true));
+
+	// North top line
+	if (Sides.ShowTopSide() && Sides.ShowNorthSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(0, TY, 0), loc.clone(), TX, 0D, 0D, Range, true));
+
+	// South bottom line
+	if (Sides.ShowBottomSide() && Sides.ShowSouthSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(0, 0, TZ), loc.clone(), TX, 0D, 0D, Range, true));
+
+	// South top line
+	if (Sides.ShowTopSide() && Sides.ShowSouthSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(0, TY, TZ), loc.clone(), TX, 0D, 0D, Range, true));
+
+	// North - West corner
+	if (Sides.ShowWestSide() && Sides.ShowNorthSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(0, 0, 0), loc.clone(), 0D, TY, 0D, Range, true));
+
+	// North - East corner
+	if (Sides.ShowEastSide() && Sides.ShowNorthSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(TX, 0, 0), loc.clone(), 0D, TY, 0D, Range, true));
+
+	// South - West corner
+	if (Sides.ShowSouthSide() && Sides.ShowWestSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(0, 0, TZ), loc.clone(), 0D, TY, 0D, Range, true));
+
+	// South - East corner
+	if (Sides.ShowSouthSide() && Sides.ShowEastSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(TX, 0, TZ), loc.clone(), 0D, TY, 0D, Range, true));
+
+	// West bottom corner
+	if (Sides.ShowWestSide() && Sides.ShowBottomSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(0, 0, 0), loc.clone(), 0D, 0D, TZ, Range, true));
+
+	// East bottom corner
+	if (Sides.ShowEastSide() && Sides.ShowBottomSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(TX, 0, 0), loc.clone(), 0D, 0D, TZ, Range, true));
+
+	// West top corner
+	if (Sides.ShowWestSide() && Sides.ShowTopSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(0, TY, 0), loc.clone(), 0D, 0D, TZ, Range, true));
+
+	// East top corner
+	if (Sides.ShowEastSide() && Sides.ShowTopSide())
+	    locList.addAll(getLocations(lowLoc.clone().add(TX, TY, 0), loc.clone(), 0D, 0D, TZ, Range, true));
+
+	return locList;
     }
 
     public boolean MakeBorders(final Player player, final Location OriginalLow, final Location OriginalHigh, final boolean error) {
 
-	Boolean NorthSide = true, WestSide = true, EastSide = true, SouthSide = true, TopSide = true, BottomSide = true;
+	CuboidArea cuboidArea = new CuboidArea(OriginalLow, OriginalHigh);
+	cuboidArea.getHighLoc().add(1, 1, 1);
 
-	Double OLX = OriginalLow.getX();
-	if (OriginalLow.getX() > OriginalHigh.getX())
-	    OLX = OriginalHigh.getX();
-
-	Double OLY = OriginalLow.getY();
-	if (OriginalLow.getY() > OriginalHigh.getY())
-	    OLY = OriginalHigh.getY();
-
-	Double OLZ = OriginalLow.getZ();
-	if (OriginalLow.getZ() > OriginalHigh.getZ())
-	    OLZ = OriginalHigh.getZ();
-
-	Location Current = new Location(OriginalHigh.getWorld(), OLX, OLY, OLZ);
-
-	Double OHX = OriginalHigh.getX() + 1;
-	if (OriginalHigh.getX() < OriginalLow.getX())
-	    OHX = OriginalLow.getX() + 1;
-
-	Double OHY = OriginalHigh.getY() + 1;
-	if (OriginalHigh.getY() < OriginalLow.getY())
-	    OHY = OriginalLow.getY() + 1;
-
-	Double OHZ = OriginalHigh.getZ() + 1;
-	if (OriginalHigh.getZ() < OriginalLow.getZ())
-	    OHZ = OriginalLow.getZ() + 1;
+	SelectionSides Sides = new SelectionSides();
 
 	int Range = Residence.getConfigManager().getVisualizerRange();
 
-	double PLLX = player.getLocation().getX() - Range;
-	double PLLZ = player.getLocation().getZ() - Range;
-	double PLLY = player.getLocation().getY() - Range;
-	double PLHX = player.getLocation().getX() + Range;
-	double PLHZ = player.getLocation().getZ() + Range;
-	double PLHY = player.getLocation().getY() + Range;
+	Location loc = player.getLocation();
+	loc = loc.add(0, 0.5, 0);
+	double PLLX = loc.getX() - Range;
+	double PLLZ = loc.getZ() - Range;
+	double PLLY = loc.getY() - Range;
+	double PLHX = loc.getX() + Range;
+	double PLHZ = loc.getZ() + Range;
+	double PLHY = loc.getY() + Range;
 
-	if (OLX < PLLX) {
-	    OLX = PLLX;
-	    WestSide = false;
+	if (cuboidArea.getLowLoc().getBlockX() < PLLX) {
+	    cuboidArea.getLowLoc().setX(PLLX);
+	    Sides.setWestSide(false);
 	}
 
-	if (OHX > PLHX) {
-	    OHX = PLHX;
-	    EastSide = false;
+	if (cuboidArea.getHighLoc().getBlockX() > PLHX) {
+	    cuboidArea.getHighLoc().setX(PLHX);
+	    Sides.setEastSide(false);
 	}
 
-	if (OLZ < PLLZ) {
-	    OLZ = PLLZ;
-	    NorthSide = false;
+	if (cuboidArea.getLowLoc().getBlockZ() < PLLZ) {
+	    cuboidArea.getLowLoc().setZ(PLLZ);
+	    Sides.setNorthSide(false);
 	}
 
-	if (OHZ > PLHZ) {
-	    OHZ = PLHZ;
-	    SouthSide = false;
+	if (cuboidArea.getHighLoc().getBlockZ() > PLHZ) {
+	    cuboidArea.getHighLoc().setZ(PLHZ);
+	    Sides.setSouthSide(false);
 	}
 
-	if (OLY < PLLY) {
-	    OLY = PLLY;
-	    BottomSide = false;
+	if (cuboidArea.getLowLoc().getBlockY() < PLLY) {
+	    cuboidArea.getLowLoc().setY(PLLY);
+	    Sides.setBottomSide(false);
 	}
 
-	if (OHY > PLHY) {
-	    OHY = PLHY;
-	    TopSide = false;
+	if (cuboidArea.getHighLoc().getBlockY() > PLHY) {
+	    cuboidArea.getHighLoc().setY(PLHY);
+	    Sides.setTopSide(false);
 	}
 
-	double TX = OLX - OHX;
-	double TY = OLY - OHY;
-	double TZ = OLZ - OHZ;
-
-	if (TX < 0)
-	    TX = TX * -1;
-	if (TY < 0)
-	    TY = TY * -1;
-	if (TZ < 0)
-	    TZ = TZ * -1;
+	double TX = cuboidArea.getXSize() - 1;
+	double TY = cuboidArea.getYSize() - 1;
+	double TZ = cuboidArea.getZSize() - 1;
 
 	if (!error && normalIDMap.containsKey(player.getName())) {
 	    Bukkit.getScheduler().cancelTask(normalIDMap.get(player.getName()));
@@ -241,7 +371,29 @@ public class SelectionManager {
 	    Bukkit.getScheduler().cancelTask(errorIDMap.get(player.getName()));
 	}
 
-	DrawBounds(player, TX, TY, TZ, OLX, OLY, OLZ, EastSide, SouthSide, WestSide, NorthSide, TopSide, BottomSide, Current, error);
+	final List<Location> locList = GetLocationsWallsByData(player, loc, TX, TY, TZ, cuboidArea.getLowLoc().clone(), Sides, Range);
+
+	final List<Location> locList2 = GetLocationsCornersByData(player, loc, TX, TY, TZ, cuboidArea.getLowLoc().clone(), Sides, Range);
+
+	Bukkit.getScheduler().runTaskAsynchronously(plugin, new Runnable() {
+	    @Override
+	    public void run() {
+		if (!error)
+		    for (Location one : locList)
+			Residence.getConfigManager().getSelectedSides().display(0, 0, 0, 0, 1, one, player);
+		else
+		    for (Location one : locList)
+			Residence.getConfigManager().getOverlapSides().display(0, 0, 0, 0, 1, one, player);
+
+		if (!error)
+		    for (Location one : locList2)
+			Residence.getConfigManager().getSelectedFrame().display(0, 0, 0, 0, 1, one, player);
+		else
+		    for (Location one : locList2)
+			Residence.getConfigManager().getOverlapFrame().display(0, 0, 0, 0, 1, one, player);
+		return;
+	    }
+	});
 
 	String planerName = player.getName();
 	if (!error && !normalPrintMap.containsKey(planerName))
@@ -254,16 +406,10 @@ public class SelectionManager {
 	else if (error && errorPrintMap.get(planerName) + Residence.getConfigManager().getVisualizerShowFor() < System.currentTimeMillis())
 	    return false;
 
-	int scid = Bukkit.getServer().getScheduler().scheduleSyncDelayedTask(Residence.instance, new Runnable() {
+	int scid = Bukkit.getServer().getScheduler().scheduleSyncDelayedTask(plugin, new Runnable() {
 	    public void run() {
-		Bukkit.getScheduler().runTaskAsynchronously(Residence.instance, new Runnable() {
-		    @Override
-		    public void run() {
-			if (player.isOnline())
-			    MakeBorders(player, OriginalLow, OriginalHigh, error);
-			return;
-		    }
-		});
+		if (player.isOnline())
+		    MakeBorders(player, OriginalLow, OriginalHigh, error);
 		return;
 	    }
 	}, Residence.getConfigManager().getVisualizerUpdateInterval() * 1L);
@@ -273,229 +419,6 @@ public class SelectionManager {
 	    errorIDMap.put(planerName, scid);
 
 	return true;
-    }
-
-    public void DrawBounds(final Player player, final Double TX, final Double TY, final Double TZ, final Double OLX, final Double OLY, final Double OLZ,
-	final Boolean EastSide, final Boolean SouthSide, final Boolean WestSide, final Boolean NorthSide, final Boolean TopSide, final Boolean BottomSide,
-	final Location Current, boolean error) {
-
-	int eachCollumn = Residence.getConfigManager().getVisualizerRowSpacing();
-	int eachRow = Residence.getConfigManager().getVisualizerCollumnSpacing();
-	// North wall
-	if (NorthSide) {
-	    Current.setX(OLX);
-	    Current.setY(OLY);
-	    Current.setZ(OLZ);
-	    for (int y = 1; y < TY; y += eachCollumn) {
-		Current.setY(OLY + y);
-		for (int x = 1; x < TX; x += eachRow) {
-		    Current.setX(OLX + x);
-		    showParticleWalls(player, Current, error);
-		}
-	    }
-	}
-
-	// South wall
-	if (SouthSide) {
-	    Current.setX(OLX);
-	    Current.setY(OLY);
-	    Current.setZ(OLZ + TZ);
-	    for (int y = 1; y < TY; y += eachCollumn) {
-		Current.setY(OLY + y);
-		for (int x = 1; x < TX; x += eachRow) {
-		    Current.setX(OLX + x);
-		    showParticleWalls(player, Current, error);
-		}
-	    }
-	}
-
-	// West wall
-	if (WestSide) {
-	    Current.setX(OLX);
-	    Current.setY(OLY);
-	    Current.setZ(OLZ);
-	    for (int y = 1; y < TY; y += eachCollumn) {
-		Current.setY(OLY + y);
-		for (int z = 1; z < TZ; z += eachRow) {
-		    Current.setZ(OLZ + z);
-		    showParticleWalls(player, Current, error);
-		}
-	    }
-	}
-
-	// East wall
-	if (EastSide) {
-	    Current.setX(OLX + TX);
-	    Current.setY(OLY);
-	    Current.setZ(OLZ);
-	    for (int y = 1; y < TY; y += eachCollumn) {
-		Current.setY(OLY + y);
-		for (int z = 1; z < TZ; z += eachRow) {
-		    Current.setZ(OLZ + z);
-		    showParticleWalls(player, Current, error);
-		}
-	    }
-	}
-
-	// Roof wall
-	if (TopSide) {
-	    Current.setX(OLX);
-	    Current.setY(OLY + TY);
-	    Current.setZ(OLZ);
-	    for (int z = 1; z < TZ; z += eachCollumn) {
-		Current.setZ(OLZ + z);
-		for (int x = 1; x < TX; x += eachRow) {
-		    Current.setX(OLX + x);
-		    showParticleWalls(player, Current, error);
-		}
-	    }
-	}
-
-	// Ground wall
-	if (BottomSide) {
-	    Current.setX(OLX);
-	    Current.setY(OLY);
-	    Current.setZ(OLZ);
-	    for (int z = 1; z < TZ; z += eachCollumn) {
-		Current.setZ(OLZ + z);
-		for (int x = 1; x < TX; x += eachRow) {
-		    Current.setX(OLX + x);
-		    showParticleWalls(player, Current, error);
-		}
-	    }
-	}
-
-	// North bottom line
-	if (BottomSide && NorthSide) {
-	    Current.setZ(OLZ);
-	    Current.setX(OLX);
-	    Current.setY(OLY);
-	    for (int x = 0; x < TX; x++) {
-		Current.setX(OLX + x);
-		showParticle(player, Current, error);
-	    }
-	}
-
-	// North top line
-	if (TopSide && NorthSide) {
-	    Current.setX(OLX);
-	    Current.setY(OLY + TY);
-	    Current.setZ(OLZ);
-	    for (int x = 0; x < TX; x++) {
-		Current.setX(OLX + x);
-		showParticle(player, Current, error);
-	    }
-	}
-
-	// South bottom line
-	if (BottomSide && SouthSide) {
-	    Current.setX(OLX);
-	    Current.setY(OLY);
-	    Current.setZ(OLZ + TZ);
-	    for (int x = 0; x < TX; x++) {
-		Current.setX(OLX + x);
-		showParticle(player, Current, error);
-	    }
-	}
-
-	// South top line
-	if (TopSide && SouthSide) {
-	    Current.setX(OLX);
-	    Current.setY(OLY + TY);
-	    Current.setZ(OLZ + TZ);
-	    for (int x = 0; x <= TX; x++) {
-		Current.setX(OLX + x);
-		showParticle(player, Current, error);
-	    }
-	}
-
-	// North - West corner
-	if (WestSide && NorthSide) {
-	    Current.setX(OLX);
-	    Current.setY(OLY);
-	    Current.setZ(OLZ);
-	    for (int y = 0; y < TY; y++) {
-		Current.setY(OLY + y);
-		showParticle(player, Current, error);
-	    }
-	}
-
-	// North - East corner
-	if (EastSide && NorthSide) {
-	    Current.setY(OLY);
-	    Current.setX(OLX + TX);
-	    Current.setZ(OLZ);
-	    for (int y = 0; y < TY; y++) {
-		Current.setY(OLY + y);
-		showParticle(player, Current, error);
-	    }
-	}
-
-	// South - West corner
-	if (SouthSide && WestSide) {
-	    Current.setY(OLY);
-	    Current.setX(OLX);
-	    Current.setZ(OLZ + TZ);
-	    for (int y = 0; y < TY; y++) {
-		Current.setY(OLY + y);
-		showParticle(player, Current, error);
-	    }
-	}
-
-	// South - East corner
-	if (SouthSide && EastSide) {
-	    Current.setY(OLY);
-	    Current.setX(OLX + TX);
-	    Current.setZ(OLZ + TZ);
-	    for (int y = 0; y < TY; y++) {
-		Current.setY(OLY + y);
-		showParticle(player, Current, error);
-	    }
-	}
-
-	// West bottom corner
-	if (WestSide && BottomSide) {
-	    Current.setX(OLX);
-	    Current.setY(OLY);
-	    Current.setZ(OLZ);
-	    for (int z = 0; z < TZ; z++) {
-		Current.setZ(OLZ + z);
-		showParticle(player, Current, error);
-	    }
-	}
-
-	// East bottom corner
-	if (EastSide && BottomSide) {
-	    Current.setY(OLY);
-	    Current.setX(OLX + TX);
-	    Current.setZ(OLZ);
-	    for (int z = 0; z < TZ; z++) {
-		Current.setZ(OLZ + z);
-		showParticle(player, Current, error);
-	    }
-	}
-
-	// West top corner
-	if (WestSide && TopSide) {
-	    Current.setY(OLY + TY);
-	    Current.setX(OLX);
-	    Current.setZ(OLZ + TZ);
-	    for (int z = 0; z < TZ; z++) {
-		Current.setZ(OLZ + z);
-		showParticle(player, Current, error);
-	    }
-	}
-
-	// East top corner
-	if (EastSide && TopSide) {
-	    Current.setY(OLY + TY);
-	    Current.setX(OLX + TX);
-	    Current.setZ(OLZ + TZ);
-	    for (int z = 0; z < TZ; z++) {
-		Current.setZ(OLZ + z);
-		showParticle(player, Current, error);
-	    }
-	}
     }
 
     public void vert(Player player, boolean resadmin) {
@@ -610,23 +533,23 @@ public class SelectionManager {
 	player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("WorldEditNotFound"));
 	return false;
     }
-    
+
     public boolean worldEditUpdate(Player player) {
 	player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("WorldEditNotFound"));
 	return false;
     }
-    
+
     public void selectBySize(Player player, int xsize, int ysize, int zsize) {
 	Location myloc = player.getLocation();
 	Location loc1 = new Location(myloc.getWorld(), myloc.getBlockX() + xsize, myloc.getBlockY() + ysize, myloc.getBlockZ() + zsize);
 	Location loc2 = new Location(myloc.getWorld(), myloc.getBlockX() - xsize, myloc.getBlockY() - ysize, myloc.getBlockZ() - zsize);
-	placeLoc1(player, loc1);
-	placeLoc2(player, loc2);
+	placeLoc1(player, loc1, false);
+	placeLoc2(player, loc2, true);
 	player.sendMessage(ChatColor.GREEN + Residence.getLanguage().getPhrase("SelectionSuccess"));
 	showSelectionInfo(player);
     }
 
-    public void modify(Player player, boolean shift, int amount) {
+    public void modify(Player player, boolean shift, double amount) {
 	if (!hasPlacedBoth(player.getName())) {
 	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("SelectPoints"));
 	    return;
@@ -636,24 +559,9 @@ public class SelectionManager {
 	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("InvalidDirection"));
 	}
 	CuboidArea area = new CuboidArea(playerLoc1.get(player.getName()), playerLoc2.get(player.getName()));
-	if (d == Direction.UP) {
-	    int oldy = area.getHighLoc().getBlockY();
-	    oldy = oldy + amount;
-	    if (oldy > player.getLocation().getWorld().getMaxHeight() - 1) {
-		player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("SelectTooHigh"));
-		oldy = player.getLocation().getWorld().getMaxHeight() - 1;
-	    }
-	    area.getHighLoc().setY(oldy);
-	    if (shift) {
-		int oldy2 = area.getLowLoc().getBlockY();
-		oldy2 = oldy2 + amount;
-		area.getLowLoc().setY(oldy2);
-		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Shifting.Up") + " (" + amount + ")");
-	    } else
-		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Expanding.Up") + " (" + amount + ")");
-	}
-	if (d == Direction.DOWN) {
-	    int oldy = area.getLowLoc().getBlockY();
+	switch (d) {
+	case DOWN:
+	    double oldy = area.getLowLoc().getBlockY();
 	    oldy = oldy - amount;
 	    if (oldy < MIN_HEIGHT) {
 		player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("SelectTooLow"));
@@ -661,66 +569,84 @@ public class SelectionManager {
 	    }
 	    area.getLowLoc().setY(oldy);
 	    if (shift) {
-		int oldy2 = area.getHighLoc().getBlockY();
+		double oldy2 = area.getHighLoc().getBlockY();
 		oldy2 = oldy2 - amount;
 		area.getHighLoc().setY(oldy2);
 		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Shifting.Down") + " (" + amount + ")");
 	    } else
 		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Expanding.Down") + " (" + amount + ")");
-	}
-	if (d == Direction.MINUSX) {
-	    int oldx = area.getLowLoc().getBlockX();
+	    break;
+	case MINUSX:
+	    double oldx = area.getLowLoc().getBlockX();
 	    oldx = oldx - amount;
 	    area.getLowLoc().setX(oldx);
 	    if (shift) {
-		int oldx2 = area.getHighLoc().getBlockX();
+		double oldx2 = area.getHighLoc().getBlockX();
 		oldx2 = oldx2 - amount;
 		area.getHighLoc().setX(oldx2);
 		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Shifting.West") + " (" + amount + ")");
 	    } else
 		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Expanding.West") + " (" + amount + ")");
-	}
-	if (d == Direction.PLUSX) {
-	    int oldx = area.getHighLoc().getBlockX();
-	    oldx = oldx + amount;
-	    area.getHighLoc().setX(oldx);
-	    if (shift) {
-		int oldx2 = area.getLowLoc().getBlockX();
-		oldx2 = oldx2 + amount;
-		area.getLowLoc().setX(oldx2);
-		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Shifting.East") + " (" + amount + ")");
-	    } else
-		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Expanding.East") + " (" + amount + ")");
-	}
-	if (d == Direction.MINUSZ) {
-	    int oldz = area.getLowLoc().getBlockZ();
+	    break;
+	case MINUSZ:
+	    double oldz = area.getLowLoc().getBlockZ();
 	    oldz = oldz - amount;
 	    area.getLowLoc().setZ(oldz);
 	    if (shift) {
-		int oldz2 = area.getHighLoc().getBlockZ();
+		double oldz2 = area.getHighLoc().getBlockZ();
 		oldz2 = oldz2 - amount;
 		area.getHighLoc().setZ(oldz2);
 		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Shifting.North") + " (" + amount + ")");
 	    } else
 		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Expanding.North") + " (" + amount + ")");
-	}
-	if (d == Direction.PLUSZ) {
-	    int oldz = area.getHighLoc().getBlockZ();
+	    break;
+	case PLUSX:
+	    oldx = area.getHighLoc().getBlockX();
+	    oldx = oldx + amount;
+	    area.getHighLoc().setX(oldx);
+	    if (shift) {
+		double oldx2 = area.getLowLoc().getBlockX();
+		oldx2 = oldx2 + amount;
+		area.getLowLoc().setX(oldx2);
+		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Shifting.East") + " (" + amount + ")");
+	    } else
+		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Expanding.East") + " (" + amount + ")");
+	    break;
+	case PLUSZ:
+	    oldz = area.getHighLoc().getBlockZ();
 	    oldz = oldz + amount;
 	    area.getHighLoc().setZ(oldz);
 	    if (shift) {
-		int oldz2 = area.getLowLoc().getBlockZ();
+		double oldz2 = area.getLowLoc().getBlockZ();
 		oldz2 = oldz2 + amount;
 		area.getLowLoc().setZ(oldz2);
 		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Shifting.South") + " (" + amount + ")");
 	    } else
 		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Expanding.South") + " (" + amount + ")");
+	    break;
+	case UP:
+	    oldy = area.getHighLoc().getBlockY();
+	    oldy = oldy + amount;
+	    if (oldy > player.getLocation().getWorld().getMaxHeight() - 1) {
+		player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("SelectTooHigh"));
+		oldy = player.getLocation().getWorld().getMaxHeight() - 1;
+	    }
+	    area.getHighLoc().setY(oldy);
+	    if (shift) {
+		double oldy2 = area.getLowLoc().getBlockY();
+		oldy2 = oldy2 + amount;
+		area.getLowLoc().setY(oldy2);
+		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Shifting.Up") + " (" + amount + ")");
+	    } else
+		player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Expanding.Up") + " (" + amount + ")");
+	    break;
+	default:
+	    break;
 	}
-	playerLoc1.put(player.getName(), area.getHighLoc());
-	playerLoc2.put(player.getName(), area.getLowLoc());
+	updateLocations(player, area.getHighLoc(), area.getLowLoc());
     }
 
-    public boolean contract(Player player, int amount, boolean resadmin) {
+    public boolean contract(Player player, double amount, boolean resadmin) {
 	if (!hasPlacedBoth(player.getName())) {
 	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("SelectPoints"));
 	    return false;
@@ -732,7 +658,7 @@ public class SelectionManager {
 	CuboidArea area = new CuboidArea(playerLoc1.get(player.getName()), playerLoc2.get(player.getName()));
 	switch (d) {
 	case DOWN:
-	    int oldy = area.getHighLoc().getBlockY();
+	    double oldy = area.getHighLoc().getBlockY();
 	    oldy = oldy - amount;
 	    if (oldy > player.getLocation().getWorld().getMaxHeight() - 1) {
 		player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("SelectTooHigh"));
@@ -742,13 +668,13 @@ public class SelectionManager {
 	    player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Contracting.Down") + " (" + amount + ")");
 	    break;
 	case MINUSX:
-	    int oldx = area.getHighLoc().getBlockX();
+	    double oldx = area.getHighLoc().getBlockX();
 	    oldx = oldx - amount;
 	    area.getHighLoc().setX(oldx);
 	    player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Contracting.West") + " (" + amount + ")");
 	    break;
 	case MINUSZ:
-	    int oldz = area.getHighLoc().getBlockZ();
+	    double oldz = area.getHighLoc().getBlockZ();
 	    oldz = oldz - amount;
 	    area.getHighLoc().setZ(oldz);
 	    player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Contracting.North") + " (" + amount + ")");
@@ -782,8 +708,7 @@ public class SelectionManager {
 	if (!ClaimedResidence.CheckAreaSize(player, area, resadmin))
 	    return false;
 
-	playerLoc1.put(player.getName(), area.getHighLoc());
-	playerLoc2.put(player.getName(), area.getLowLoc());
+	updateLocations(player, area.getHighLoc(), area.getLowLoc());
 	return true;
     }
 

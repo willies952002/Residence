@@ -4,7 +4,6 @@ import java.util.HashMap;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
-import com.bekvon.bukkit.residence.NewLanguage;
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.containers.AutoSelector;
 import com.bekvon.bukkit.residence.permissions.PermissionGroup;
@@ -18,17 +17,14 @@ public class AutoSelection {
 	if (!list.containsKey(player.getName().toLowerCase())) {
 	    PermissionGroup group = Residence.getPermissionManager().getGroup(player.getName(), player.getLocation().getWorld().getName());
 	    list.put(player.getName().toLowerCase(), new AutoSelector(group, System.currentTimeMillis()));
-	    player.sendMessage(NewLanguage.getMessage("Language.AutoSelection.Enabled"));
+	    player.sendMessage(Residence.getLM().getMessage("Language.AutoSelection.Enabled"));
 	} else {
 	    list.remove(player.getName().toLowerCase());
-	    player.sendMessage(NewLanguage.getMessage("Language.AutoSelection.Disabled"));
+	    player.sendMessage(Residence.getLM().getMessage("Language.AutoSelection.Disabled"));
 	}
     }
 
     public static void UpdateSelection(Player player) {
-
-	if (getList().size() == 0)
-	    return;
 
 	if (!getList().containsKey(player.getName().toLowerCase()))
 	    return;
@@ -39,7 +35,7 @@ public class AutoSelection {
 
 	if (Curenttime > 270) {
 	    list.remove(player.getName().toLowerCase());
-	    player.sendMessage(NewLanguage.getMessage("Language.AutoSelection.Disabled"));
+	    player.sendMessage(Residence.getLM().getMessage("Language.AutoSelection.Disabled"));
 	    return;
 	}
 
@@ -51,13 +47,13 @@ public class AutoSelection {
 	Location loc2 = Residence.getSelectionManager().getPlayerLoc2(name);
 
 	if (loc1 == null) {
-	    Residence.getSelectionManager().placeLoc1(player, cloc);
+	    Residence.getSelectionManager().placeLoc1(player, cloc, false);
 	    loc1 = player.getLocation();
 	    return;
 	}
 
 	if (loc2 == null) {
-	    Residence.getSelectionManager().placeLoc2(player, cloc);
+	    Residence.getSelectionManager().placeLoc2(player, cloc, true);
 	    loc2 = player.getLocation();
 	    return;
 	}
@@ -113,8 +109,8 @@ public class AutoSelection {
 	}
 
 	if (changed) {
-	    Residence.getSelectionManager().placeLoc1(player, hloc);
-	    Residence.getSelectionManager().placeLoc2(player, lloc);
+	    Residence.getSelectionManager().placeLoc1(player, hloc, false);
+	    Residence.getSelectionManager().placeLoc2(player, lloc, true);
 	    Residence.getSelectionManager().showSelectionInfoInActionBar(player);
 	}
     }

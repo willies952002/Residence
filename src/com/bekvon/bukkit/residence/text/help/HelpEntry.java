@@ -7,10 +7,12 @@ package com.bekvon.bukkit.residence.text.help;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Material;
 
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.ResidenceCommandListener;
 import com.bekvon.bukkit.residence.containers.HelpLines;
+import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
 
 import java.io.File;
@@ -20,12 +22,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Set;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
 
 /**
  *
@@ -102,11 +106,14 @@ public class HelpEntry {
 		    if (resadmin)
 			path = path.replace("/res ", "/resadmin ");
 
-		    String prev = "[\"\",{\"text\":\"" + ChatColor.GOLD + " " + helplines.get(i).getDesc()
+		    String msg = "[\"\",{\"text\":\"" + ChatColor.GOLD + " " + helplines.get(i).getDesc()
 			+ "\",\"color\":\"gold\",\"clickEvent\":{\"action\":\"suggest_command\",\"value\":\"" + path + helplines.get(i).getCommand()
 			+ " \"},\"hoverEvent\":{\"action\":\"show_text\",\"value\":{\"text\":\"\",\"extra\":[{\"text\":\"" + desc + "\"}]}}}]";
 
-		    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "tellraw " + sender.getName() + " " + prev);
+		    if (sender instanceof Player)
+			Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "tellraw " + sender.getName() + " " + msg);
+		    else
+			sender.sendMessage(helplines.get(i).getDesc());
 
 		} else
 		    sender.sendMessage(ChatColor.GOLD + " " + helplines.get(i).getDesc());
@@ -130,7 +137,8 @@ public class HelpEntry {
 	String next = " {\"text\":\"" + Residence.getLanguage().getPhrase("NextInfoPage") + " " + separator + "\",\"clickEvent\":{\"action\":\"run_command\",\"value\":\""
 	    + nextCmd + "\"},\"hoverEvent\":{\"action\":\"show_text\",\"value\":{\"text\":\"\",\"extra\":[{\"text\":\"" + ">>>" + "\"}]}}}]";
 
-	Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "tellraw " + sender.getName() + " " + prev + "," + next);
+	if (sender instanceof Player)
+	    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "tellraw " + sender.getName() + " " + prev + "," + next);
     }
 
     public void printHelp(CommandSender sender, int page, String path, boolean resadmin) {
@@ -155,13 +163,13 @@ public class HelpEntry {
 
 	FlagPermissions GlobalFlags = Residence.getPermissionManager().getAllFlags();
 
-	for (HelpEntry entry : subentrys) { 
-	    
+	for (HelpEntry entry : subentrys) {
+
 	    if (!name.equalsIgnoreCase("flags")) {
-		if (ResidenceCommandListener.AdminCommands.contains(entry.getName().toLowerCase()) && !resadmin)
+		if (ResidenceCommandListener.getAdminCommands().contains(entry.getName().toLowerCase()) && !resadmin)
 		    continue;
 
-		if (!ResidenceCommandListener.AdminCommands.contains(entry.getName().toLowerCase()) && resadmin)
+		if (!ResidenceCommandListener.getAdminCommands().contains(entry.getName().toLowerCase()) && resadmin)
 		    continue;
 	    } else {
 		if (GlobalFlags.getFlags().containsKey(entry.getName().toLowerCase())) {
@@ -247,10 +255,57 @@ public class HelpEntry {
 	return entry;
     }
 
-    public static Set<String> getSubCommands(String[] args) {
-	File langFile = new File(new File(Residence.getDataLocation(), "Language"), Residence.getConfigManager().getLanguage() + ".yml");
+//    public static Set<String> getSubCommands(String[] args) {
+//	File langFile = new File(new File(Residence.getDataLocation(), "Language"), "English.yml");
+//
+//	Set<String> subCommands = new HashSet<String>(Arrays.asList(""));
+//
+//	if (langFile.isFile()) {
+//	    FileConfiguration node = new YamlConfiguration();
+//	    try {
+//		node.load(langFile);
+//	    } catch (FileNotFoundException e) {
+//		e.printStackTrace();
+//	    } catch (IOException e) {
+//		e.printStackTrace();
+//	    } catch (InvalidConfigurationException e) {
+//		e.printStackTrace();
+//	    }
+//
+//	    subCommands = node.getConfigurationSection("CommandHelp.SubCommands.res.SubCommands").getKeys(false);
+//	    ConfigurationSection meinPath = node.getConfigurationSection("CommandHelp.SubCommands.res.SubCommands");
+//
+//	    String pathKey = convertArgs(args);
+//	    String key = pathKey + ".SubCommands";
+//
+//	    Debug.D("" + key);
+//	    
+//	    if (key == "") {
+//		return subCommands;
+//	    } else {
+//		if (meinPath.contains(key)) {
+//		    return meinPath.getConfigurationSection(key).getKeys(false);
+//		} else {
+//		    String[] arg = new String[args.length - 1];
+//		    for (int i = 0; i < args.length - 1; i++) {
+//			arg[i] = args[i];
+//		    }
+//		    pathKey = convertArgs(arg);
+//		    key = pathKey + ".SubCommands";
+//		    if (meinPath.contains(key)) {
+//			return meinPath.getConfigurationSection(key).getKeys(false);
+//		    }
+//		}
+//	    }
+//
+//	}
+//	return new HashSet<String>(Arrays.asList("?"));
+//    }
 
-	Set<String> subCommands = new HashSet<String>(Arrays.asList(""));
+    public Set<String> getSubCommands(CommandSender sender, String[] args) {
+	File langFile = new File(new File(Residence.getDataLocation(), "Language"), "English.yml");
+//
+	Set<String> subCommands = new HashSet<String>();
 
 	if (langFile.isFile()) {
 	    FileConfiguration node = new YamlConfiguration();
@@ -264,50 +319,134 @@ public class HelpEntry {
 		e.printStackTrace();
 	    }
 
-	    subCommands = node.getConfigurationSection("CommandHelp.SubCommands.res.SubCommands").getKeys(false);
 	    ConfigurationSection meinPath = node.getConfigurationSection("CommandHelp.SubCommands.res.SubCommands");
+	    ConfigurationSection tempmeinPath = node.getConfigurationSection("CommandHelp.SubCommands.res.SubCommands");
 
-	    String key = convertArgs(args);
+	    if (args.length == 1)
+		return meinPath.getKeys(false);
 
-	    if (key == "") {
-		return subCommands;
-	    } else {
-		if (meinPath.contains(key)) {
-		    return meinPath.getConfigurationSection(key).getKeys(false);
-		} else {
-		    String[] arg = new String[args.length - 1];
-		    for (int i = 0; i < args.length - 1; i++) {
-			arg[i] = args[i];
+	    boolean ok = true;
+	    int i = 0;
+	    while (ok) {
+
+		if (args[i].equalsIgnoreCase(""))
+		    return tempmeinPath.getKeys(false);
+
+		if (!tempmeinPath.isConfigurationSection(args[i] + ".SubCommands"))
+		    break;
+
+		tempmeinPath = tempmeinPath.getConfigurationSection(args[i] + ".SubCommands");
+
+		i++;
+	    }
+
+	    int neededArgPlace = args.length - 2 - i;
+
+	    boolean subCommand = true;
+	    if (tempmeinPath.isConfigurationSection(args[i])) {
+		subCommand = false;
+		tempmeinPath = tempmeinPath.getConfigurationSection(args[i]);
+	    }
+
+	    String Args = (tempmeinPath.isString("Args") ? tempmeinPath.getString("Args") : null);
+
+	    List<String> ArgsList = new ArrayList<String>();
+
+	    if (Args != null)
+		if (Args.contains(" "))
+		    ArgsList.addAll(Arrays.asList(Args.split(" ")));
+		else
+		    ArgsList.add(Args);
+
+	    String NeededArg = null;
+	    if (neededArgPlace < ArgsList.size() && neededArgPlace >= 0)
+		NeededArg = ArgsList.get(neededArgPlace);
+
+	    if (NeededArg != null)
+		switch (NeededArg) {
+		case "[playername]":
+		    for (Player one : Bukkit.getOnlinePlayers())
+			subCommands.add(one.getName());
+		    break;
+		case "[residence]":
+		    if (sender instanceof Player) {
+			ClaimedResidence res = Residence.getResidenceManager().getByLoc(((Player) sender).getLocation());
+			if (res != null) {
+			    String resName = res.getName();
+			    if (resName != null)
+				subCommands.add(resName);
+			}
+			ArrayList<String> resList = Residence.getResidenceManager().getResidenceList(((Player) sender).getName(), true, false);
+			if (resList.size() > 0)
+			    subCommands.addAll(resList);
+		    } else {
+			ArrayList<String> resList = Residence.getResidenceManager().getResidenceList("Server_land", true, false);
+			if (resList.size() > 0)
+			    subCommands.addAll(resList);
 		    }
-		    key = convertArgs(arg);
-		    if (meinPath.contains(key)) {
-			return meinPath.getConfigurationSection(key).getKeys(false);
+		    break;
+		case "[cresidence]":
+		    if (sender instanceof Player) {
+			ClaimedResidence res = Residence.getResidenceManager().getByLoc(((Player) sender).getLocation());
+			if (res != null) {
+			    String resName = res.getName();
+			    if (resName != null)
+				subCommands.add(resName);
+			}
 		    }
+		    break;
+		case "[residenceshop]":
+		    subCommands.addAll(Residence.getResidenceManager().getShops());
+		    break;
+		case "[flag]":
+		    FlagPermissions GlobalFlags = Residence.getPermissionManager().getAllFlags();
+		    for (Entry<String, Boolean> one : GlobalFlags.getFlags().entrySet()) {
+			subCommands.add(one.getKey());
+		    }
+		    break;
+		case "[deposit/withdraw]":
+		    subCommands.add("deposit");
+		    subCommands.add("withdraw");
+		    break;
+		case "[enter/leave]":
+		    subCommands.add("enter");
+		    subCommands.add("leave");
+		    break;
+		case "[renew/cost]":
+		    subCommands.add("renew");
+		    subCommands.add("cost");
+		    break;
+		case "[true/false]":
+		    subCommands.add("true");
+		    subCommands.add("false");
+		    break;
+		case "[true/false/remove]":
+		    subCommands.add("true");
+		    subCommands.add("false");
+		    subCommands.add("remove");
+		    break;
+		case "[blacklist/ignorelist]":
+		    subCommands.add("blacklist");
+		    subCommands.add("ignorelist");
+		    break;
+		case "[material]":
+		    for (Material one : Material.values()) {
+			subCommands.add(one.name().toLowerCase());
+		    }
+		    break;
 		}
+
+	    String command = tempmeinPath.getCurrentPath().replace("CommandHelp.SubCommands.", "").replace(".SubCommands.", " ");
+	    if (subCommands.size() > 0) {
+		return subCommands;
+	    }
+
+	    if (subCommand)
+		return tempmeinPath.getKeys(false);
+	    else {
+		Bukkit.dispatchCommand(sender, command + " ?");
 	    }
 	}
 	return new HashSet<String>(Arrays.asList("?"));
     }
-
-    private static String convertArgs(String[] args) {
-	String key = "";
-	if (args.length > 0) {
-	    int i = 1;
-	    for (String one : args) {
-		if (one.equalsIgnoreCase(""))
-		    continue;
-		key += one;
-		if (i < args.length)
-		    key += ".SubCommands.";
-		if (i < args.length + 1)
-		    key += ".SubCommands";
-		i++;
-	    }
-	} else if (args.length == 1) {
-	    key = args[0];
-	    key += ".SubCommands";
-	}
-	return key;
-    }
-
 }

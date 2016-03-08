@@ -5,7 +5,6 @@
 
 package com.bekvon.bukkit.residence.permissions;
 
-import com.bekvon.bukkit.residence.PlayerManager;
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
 import com.bekvon.bukkit.residence.vaultinterface.ResidenceVaultAdapter;
@@ -54,7 +53,7 @@ public class PermissionManager {
     }
 
     public PermissionGroup getGroup(Player player) {
-	PermissionGroup group = PlayerManager.getGroup(player.getName());
+	PermissionGroup group = Residence.getPlayerManager().getGroup(player.getName());
 	if (group != null) {
 	    return group;
 	}
@@ -62,7 +61,7 @@ public class PermissionManager {
     }
 
     public PermissionGroup getGroup(String player, String world) {
-	PermissionGroup group = PlayerManager.getGroup(player);
+	PermissionGroup group = Residence.getPlayerManager().getGroup(player);
 	if (group != null) {
 	    return group;
 	}
@@ -181,10 +180,12 @@ public class PermissionManager {
 	if (!groups.containsKey(defaultGroup)) {
 	    groups.put(defaultGroup, new PermissionGroup(defaultGroup));
 	}
-	Set<String> keys = config.getConfigurationSection("GroupAssignments").getKeys(false);
-	if (keys != null) {
-	    for (String key : keys) {
-		playersGroup.put(key.toLowerCase(), config.getString("GroupAssignments." + key, defaultGroup).toLowerCase());
+	if (config.isConfigurationSection("GroupAssignments")) {
+	    Set<String> keys = config.getConfigurationSection("GroupAssignments").getKeys(false);
+	    if (keys != null) {
+		for (String key : keys) {
+		    playersGroup.put(key.toLowerCase(), config.getString("GroupAssignments." + key, defaultGroup).toLowerCase());
+		}
 	    }
 	}
     }

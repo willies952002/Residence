@@ -18,7 +18,7 @@ import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
-import com.bekvon.bukkit.residence.PlayerManager;
+import com.bekvon.bukkit.residence.NewLanguage;
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.economy.TransactionManager;
 import com.bekvon.bukkit.residence.event.ResidenceCreationEvent;
@@ -37,10 +37,12 @@ public class ResidenceManager {
     protected Map<String, ClaimedResidence> residences;
     protected Map<String, Map<ChunkRef, List<String>>> chunkResidences;
     protected List<String> shops = new ArrayList<String>();
+    private Residence plugin;
 
-    public ResidenceManager() {
+    public ResidenceManager(Residence plugin) {
 	residences = new HashMap<>();
 	chunkResidences = new HashMap<>();
+	this.plugin = plugin;
     }
 
     public ClaimedResidence getByLoc(Location loc) {
@@ -78,18 +80,41 @@ public class ResidenceManager {
 	    return null;
 	}
 	String[] split = name.split("\\.");
-	if (split.length == 1) {
-	    return residences.get(name);
-	}
-	ClaimedResidence res = residences.get(split[0]);
-	for (int i = 1; i < split.length; i++) {
-	    if (res != null) {
-		res = res.getSubzone(split[i]);
-	    } else {
-		return null;
+	if (Residence.getConfigManager().isResCreateCaseSensitive()) {
+	    if (split.length == 1) {
+		return residences.get(name);
 	    }
+	    ClaimedResidence res = residences.get(split[0]);
+	    for (int i = 1; i < split.length; i++) {
+		if (res != null) {
+		    res = res.getSubzone(split[i]);
+		} else {
+		    return null;
+		}
+	    }
+	    return res;
+	} else {
+	    if (split.length == 1) {
+		for (Entry<String, ClaimedResidence> one : residences.entrySet()) {
+		    if (one.getKey().equalsIgnoreCase(name))
+			return one.getValue();
+		}
+	    }
+	    ClaimedResidence res = null;
+	    for (Entry<String, ClaimedResidence> one : residences.entrySet()) {
+		if (one.getKey().equalsIgnoreCase(split[0]))
+		    res = one.getValue();
+	    }
+
+	    for (int i = 1; i < split.length; i++) {
+		if (res != null) {
+		    res = res.getSubzoneNoCase(split[i]);
+		} else {
+		    return null;
+		}
+	    }
+	    return res;
 	}
-	return res;
     }
 
     public String getNameByLoc(Location loc) {
@@ -114,6 +139,20 @@ public class ResidenceManager {
 	    String n = check.getValue().getSubzoneNameByRes(res);
 	    if (n != null) {
 		return check.getKey() + "." + n;
+	    }
+	}
+	return null;
+    }
+
+    public String getSubzoneNameByRes(ClaimedResidence res) {
+	Set<Entry<String, ClaimedResidence>> set = residences.entrySet();
+	for (Entry<String, ClaimedResidence> check : set) {
+	    if (check.getValue() == res) {
+		return check.getKey();
+	    }
+	    String n = check.getValue().getSubzoneNameByRes(res);
+	    if (n != null) {
+		return n;
 	    }
 	}
 	return null;
@@ -175,7 +214,7 @@ public class ResidenceManager {
 	    }
 	}
 	CuboidArea newArea = new CuboidArea(loc1, loc2);
-	ClaimedResidence newRes = new ClaimedResidence(owner, loc1.getWorld().getName());
+	ClaimedResidence newRes = new ClaimedResidence(owner, loc1.getWorld().getName(), plugin);
 	newRes.getPermissions().applyDefaultFlags();
 	newRes.setEnterMessage(group.getDefaultEnterMessage());
 	newRes.setLeaveMessage(group.getDefaultLeaveMessage());
@@ -187,12 +226,25 @@ public class ResidenceManager {
 	}
 	newArea = resevent.getPhysicalArea();
 	name = resevent.getResidenceName();
-	if (residences.containsKey(name)) {
-	    if (player != null) {
-		player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("ResidenceAlreadyExists", ChatColor.YELLOW + name + ChatColor.RED));
+
+	if (Residence.getConfigManager().isResCreateCaseSensitive()) {
+	    if (residences.containsKey(name)) {
+		if (player != null) {
+		    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("ResidenceAlreadyExists", ChatColor.YELLOW + name + ChatColor.RED));
+		}
+		return false;
 	    }
-	    return false;
+	} else {
+	    for (Entry<String, ClaimedResidence> one : residences.entrySet()) {
+		if (one.getKey().equalsIgnoreCase(name)) {
+		    if (player != null) {
+			player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("ResidenceAlreadyExists", ChatColor.YELLOW + one.getKey() + ChatColor.RED));
+		    }
+		    return false;
+		}
+	    }
 	}
+
 	newRes.BlockSellPrice = group.getSellPerBlock();
 	if (player != null) {
 	    newRes.addArea(player, newArea, "main", resadmin);
@@ -205,7 +257,7 @@ public class ResidenceManager {
 	    calculateChunks(name);
 	    Residence.getLeaseManager().removeExpireTime(name);
 
-	    PlayerManager.addResidence(newRes.getOwner(), newRes);
+	    Residence.getPlayerManager().addResidence(newRes.getOwner(), newRes);
 
 	    if (player != null) {
 		Residence.getSelectionManager().NewMakeBorders(player, newArea.getHighLoc(), newArea.getLowLoc(), false);
@@ -254,10 +306,10 @@ public class ResidenceManager {
 	    showhidden = false;
 	}
 	final boolean hidden = showhidden;
-	Bukkit.getScheduler().runTaskAsynchronously(Residence.instance, new Runnable() {
+	Bukkit.getScheduler().runTaskAsynchronously(plugin, new Runnable() {
 	    @Override
 	    public void run() {
-		ArrayList<String> ownedResidences = PlayerManager.getResidenceListString(targetplayer, hidden);
+		ArrayList<String> ownedResidences = Residence.getPlayerManager().getResidenceListString(targetplayer, hidden);
 		ownedResidences.addAll(Residence.getRentManager().getRentedLands(targetplayer));
 		InformationPager.printInfo(player, Residence.getLanguage().getPhrase("Residences") + " - " + targetplayer, ownedResidences, page);
 		return;
@@ -287,7 +339,7 @@ public class ResidenceManager {
     public Map<String, ClaimedResidence> getResidenceMapList(String targetplayer, boolean showhidden) {
 	Map<String, ClaimedResidence> temp = new HashMap<String, ClaimedResidence>();
 	for (Entry<String, ClaimedResidence> res : residences.entrySet()) {
-	    if (res.getValue().getPermissions().getOwner().equalsIgnoreCase(targetplayer)) {
+	    if (res.getValue().isOwner(targetplayer)) {
 		boolean hidden = res.getValue().getPermissions().has("hidden", false);
 		if ((showhidden) || (!showhidden && !hidden)) {
 		    temp.put(res.getValue().getName(), res.getValue());
@@ -317,7 +369,7 @@ public class ResidenceManager {
 	ArrayList<String> list, boolean formattedOutput) {
 	boolean hidden = res.getPermissions().has("hidden", false);
 	if ((showhidden) || (!showhidden && !hidden)) {
-	    if (targetplayer == null || res.getPermissions().getOwner().equalsIgnoreCase(targetplayer)) {
+	    if (targetplayer == null || res.getPermissions().getOwner().equals(targetplayer)) {
 		if (formattedOutput) {
 		    list.add(Residence.getLanguage().getPhrase("ResidenceList", parentzone + "|" + resname + "|" + Residence.getLanguage().getPhrase("World") + "|" + res
 			.getWorld()));
@@ -415,12 +467,12 @@ public class ResidenceManager {
 	    // around for now
 
 	    for (String oneSub : res.getSubzoneList()) {
-		PlayerManager.removeResFromPlayer(res.getOwner(), name + "." + oneSub);
+		Residence.getPlayerManager().removeResFromPlayer(res.getOwner(), name + "." + oneSub);
 		Residence.getRentManager().removeRentable(name + "." + oneSub);
 		Residence.getTransactionManager().removeFromSale(name + "." + oneSub);
 	    }
 
-	    PlayerManager.removeResFromPlayer(res.getOwner(), name);
+	    Residence.getPlayerManager().removeResFromPlayer(res.getOwner(), name);
 
 	    Residence.getRentManager().removeRentable(name);
 	    Residence.getTransactionManager().removeFromSale(name);
@@ -448,12 +500,12 @@ public class ResidenceManager {
 	Iterator<ClaimedResidence> it = resholder.values().iterator();
 	while (it.hasNext()) {
 	    ClaimedResidence res = it.next();
-	    if (res.getOwner().equalsIgnoreCase(owner)) {
+	    if (res.isOwner(owner)) {
 		ResidenceDeleteEvent resevent = new ResidenceDeleteEvent(player, res, player == null ? DeleteCause.OTHER : DeleteCause.PLAYER_DELETE);
 		Residence.getServ().getPluginManager().callEvent(resevent);
 		if (resevent.isCancelled())
 		    return;
-		PlayerManager.removeResFromPlayer(player, res.getName());
+		Residence.getPlayerManager().removeResFromPlayer(player, res.getName());
 		removeChunkList(res.getName());
 		it.remove();
 	    } else {
@@ -471,7 +523,7 @@ public class ResidenceManager {
 //		count++;
 //	    }
 //	}
-	return PlayerManager.getResidenceList(player).size();
+	return Residence.getPlayerManager().getResidenceList(player).size();
     }
 
     public boolean hasMaxZones(String player, int target) {
@@ -494,94 +546,94 @@ public class ResidenceManager {
     public void printAreaInfo(String areaname, Player player) {
 	ClaimedResidence res = this.getByName(areaname);
 	if (res == null) {
-	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("InvalidResidence"));
+	    Residence.sendMessage(player, "&c" + Residence.getLM().getMessage("InvalidResidence"));
 	    return;
 	}
-	player.sendMessage(ChatColor.GOLD + "**********************************************************");
+	Residence.sendMessage(player, "&6**********************************************************");
 
 	ResidencePermissions perms = res.getPermissions();
+	NewLanguage lm = Residence.getLM();
 
 	String aid = res.getAreaIDbyLoc(player.getLocation());
 	if (Residence.getConfigManager().enableEconomy()) {
 
-	    String msg = ChatColor.YELLOW + Residence.getLanguage().getPhrase("Residence") + ":" + ChatColor.DARK_GREEN + " " + areaname + " ";
+	    String msg = "&e" + Residence.getLM().getMessage("Residence") + ": &2" + areaname + " ";
 
 	    if (Residence.getConfigManager().enabledRentSystem() && Residence.getRentManager().isRented(areaname)) {
-		msg += ChatColor.YELLOW + Residence.getLanguage().getPhrase("Owner") + ":" + ChatColor.RED + " " + perms.getOwner() + ChatColor.YELLOW
-		    + " " + Residence.getLanguage().getPhrase("RentedBy") + ": " + ChatColor.RED + Residence.getRentManager().getRentingPlayer(areaname);
+		msg += "&e" + lm.getMessage("Owner") + ": &c" + perms.getOwner() + "&e"
+		    + " " + lm.getMessage("RentedBy") + ": &c" + Residence.getRentManager().getRentingPlayer(areaname);
 	    } else {
-		msg += " " + ChatColor.YELLOW + Residence.getLanguage().getPhrase("Owner") + ":" + ChatColor.RED + " " + perms.getOwner() + ChatColor.YELLOW;
+		msg += "&e" + lm.getMessage("Owner") + ": &c" + perms.getOwner() + "&e";
 	    }
 
-	    msg += ChatColor.YELLOW + " " + Residence.getLanguage().getPhrase("Bank") + ": " + ChatColor.GOLD + res.getBank().getStoredMoney();
+	    msg += "&e" + " " + lm.getMessage("Bank") + ": &6" + res.getBank().getStoredMoney();
 
-	    player.sendMessage(msg);
+	    Residence.sendMessage(player, msg);
 	} else {
-	    player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Residence") + ":" + ChatColor.DARK_GREEN + " " + areaname);
+	    Residence.sendMessage(player, "&e" + lm.getMessage("Residence") + ": &2" + areaname);
 	}
 
-	String msg = ChatColor.YELLOW + Residence.getLanguage().getPhrase("World") + ": " + ChatColor.RED + perms.getWorld();
+	String msg = "&6" + lm.getMessage("World") + ": &c" + perms.getWorld();
 
 	if (aid != null) {
 
-	    msg += ChatColor.YELLOW + " (" + ChatColor.DARK_AQUA;
+	    msg += "&6 (&3";
 	    CuboidArea area = res.getAreaByLoc(player.getLocation());
 
-	    msg += Residence.getLanguage().getPhrase("CoordsTop", area.getHighLoc().getBlockX() + "|" + area.getHighLoc().getBlockY() + "|" + area.getHighLoc()
+	    msg += lm.getMessage("CoordsTop", area.getHighLoc().getBlockX() + "%" + area.getHighLoc().getBlockY() + "%" + area.getHighLoc()
 		.getBlockZ());
 
-	    msg += ChatColor.YELLOW + "; " + ChatColor.DARK_AQUA;
-	    msg += Residence.getLanguage().getPhrase("CoordsBottom", area.getLowLoc().getBlockX() + "|" + area.getLowLoc().getBlockY() + "|" + area.getLowLoc()
+	    msg += "&6; &3";
+	    msg += lm.getMessage("CoordsBottom", area.getLowLoc().getBlockX() + "%" + area.getLowLoc().getBlockY() + "%" + area.getLowLoc()
 		.getBlockZ());
 
-	    msg += ChatColor.YELLOW + ")";
+	    msg += "&6)";
 	}
-	player.sendMessage(msg);
+	Residence.sendMessage(player, msg);
 
-	player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Flags") + ":" + ChatColor.BLUE + " " + perms.listFlags());
-	player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Your.Flags") + ": " + ChatColor.GREEN + perms.listPlayerFlags(player.getName()));
+	Residence.sendMessage(player, "&6" + lm.getMessage("Flags") + ": &9" + perms.listFlags());
+	Residence.sendMessage(player, "&6" + lm.getMessage("Your") + " " + lm.getMessage("Flags") + ": &2" + perms.listPlayerFlags(player.getName()));
 
 	String groupFlags = perms.listGroupFlags();
 	if (groupFlags.length() > 0)
-	    player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Group.Flags") + ":" + ChatColor.RED + " " + groupFlags);
+	    Residence.sendMessage(player, "&6" + lm.getMessage("Group") + " " + lm.getMessage("Flags") + ": &c" + groupFlags);
 	if (!Residence.getConfigManager().isShortInfoUse())
-	    player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("Others.Flags") + ":" + ChatColor.RED + " " + perms.listOtherPlayersFlags(player
-		.getName()));
+	    Residence.sendMessage(player, "&6" + lm.getMessage("Others") + " " + lm.getMessage("Flags") + ": &c" + perms.listOtherPlayersFlags(player.getName()));
 	else {
-	    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "tellraw " + player.getName() + " " + perms.listOtherPlayersFlagsRaw(ChatColor.YELLOW + Residence
-		.getLanguage().getPhrase("Others.Flags") + ": ", player.getName()));
+	    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "tellraw " + player.getName() + " " + perms.listOtherPlayersFlagsRaw("&e" +
+		lm.getMessage("Others") + " " + lm.getMessage("Flags") + ": ", player.getName()));
 	}
 
 	msg = "";
 	if (aid != null) {
-	    msg += ChatColor.YELLOW + Residence.getLanguage().getPhrase("CurrentArea") + ": " + ChatColor.GOLD + aid + " ";
+	    msg += "&e" + lm.getMessage("CurrentArea") + ": &6" + aid + " ";
 	}
-	msg += ChatColor.YELLOW + Residence.getLanguage().getPhrase("Total.Size") + ":" + ChatColor.LIGHT_PURPLE + " " + res.getTotalSize();
+	msg += "&e" + lm.getMessage("Total") + " " + lm.getMessage("Size") + ": &6" + res.getTotalSize();
 
-	player.sendMessage(msg);
+	Residence.sendMessage(player, msg);
 
 	if (Residence.getEconomyManager() != null) {
 	    PermissionGroup group = Residence.getPermissionManager().getGroup(res.getOwner(), res.getWorld());
-	    player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("TotalWorth", String.valueOf((int) ((res.getTotalSize() * group.getCostPerBlock())
-		* 100) / 100.0) + "|" + String.valueOf((int) ((res.getTotalSize() * res.getBlockSellPrice()) * 100) / 100.0)));
+	    Residence.sendMessage(player, "&e" + lm.getMessage("TotalWorth", String.valueOf((int) ((res.getTotalSize() * group.getCostPerBlock())
+		* 100) / 100.0) + "%" + String.valueOf((int) ((res.getTotalSize() * res.getBlockSellPrice()) * 100) / 100.0)));
 	}
 	if (Residence.getConfigManager().useLeases() && Residence.getLeaseManager().leaseExpires(areaname)) {
-	    player.sendMessage(ChatColor.YELLOW + Residence.getLanguage().getPhrase("LeaseExpire") + ":" + ChatColor.GREEN + " " + Residence.getLeaseManager()
+	    Residence.sendMessage(player, "&e" + lm.getMessage("LeaseExpire") + ": &2" + Residence.getLeaseManager()
 		.getExpireTime(areaname));
 	}
-	player.sendMessage(ChatColor.GOLD + "**********************************************************");
+	Residence.sendMessage(player, "&6**********************************************************");
     }
 
     public void mirrorPerms(Player reqPlayer, String targetArea, String sourceArea, boolean resadmin) {
 	ClaimedResidence reciever = this.getByName(targetArea);
 	ClaimedResidence source = this.getByName(sourceArea);
 	if (source == null || reciever == null) {
-	    reqPlayer.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("InvalidResidence"));
+	    Residence.sendMessage(reqPlayer, "&c" + Residence.getLM().getMessage("InvalidResidence"));
 	    return;
 	}
 	if (!resadmin) {
 	    if (!reciever.getPermissions().hasResidencePermission(reqPlayer, true) || !source.getPermissions().hasResidencePermission(reqPlayer, true)) {
-		reqPlayer.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("NoPermission"));
+		Residence.sendMessage(reqPlayer, "&c" + Residence.getLM().getMessage("NoPermission"));
 		return;
 	    }
 	}
@@ -607,8 +659,8 @@ public class ResidenceManager {
 	return worldmap;
     }
 
-    public static ResidenceManager load(Map<String, Object> root) throws Exception {
-	ResidenceManager resm = new ResidenceManager();
+    public ResidenceManager load(Map<String, Object> root) throws Exception {
+	ResidenceManager resm = new ResidenceManager(plugin);
 	if (root == null)
 	    return resm;
 
@@ -616,6 +668,7 @@ public class ResidenceManager {
 	    long time = System.currentTimeMillis();
 	    @SuppressWarnings("unchecked")
 	    Map<String, Object> reslist = (Map<String, Object>) root.get(world.getName());
+	    plugin.getLogger().info("Loading " + world.getName() + " data into memory...");
 	    if (reslist != null) {
 		try {
 		    resm.chunkResidences.put(world.getName(), loadMap(world.getName(), reslist, resm));
@@ -625,53 +678,60 @@ public class ResidenceManager {
 			throw (ex);
 		}
 	    }
-	    Residence.instance.getLogger().info("Loading " + world.getName() + " data into memory. (" + (System.currentTimeMillis() - time) + " ms)");
+
+	    long pass = System.currentTimeMillis() - time;
+	    String PastTime = pass > 1000 ? String.format("%.2f", (pass / 1000F)) + " sec" : pass + " ms";
+
+	    plugin.getLogger().info("Loaded " + world.getName() + " data into memory. (" + PastTime + ")");
 	}
 	return resm;
     }
 
-    public static Map<ChunkRef, List<String>> loadMap(String worldName, Map<String, Object> root, ResidenceManager resm) throws Exception {
+    public Map<ChunkRef, List<String>> loadMap(String worldName, Map<String, Object> root, ResidenceManager resm) throws Exception {
 	Map<ChunkRef, List<String>> retRes = new HashMap<>();
-	if (root != null) {
-	    int i = 0;
-	    int y = 0;
-	    for (Entry<String, Object> res : root.entrySet()) {
-		if (i == 100 & Residence.getConfigManager().isUUIDConvertion())
-		    Bukkit.getConsoleSender().sendMessage("[Residence] " + worldName + " UUID conversion done: " + y + " of " + root.size());
-		if (i >= 100)
-		    i = 0;
-		i++;
-		y++;
-		try {
-		    @SuppressWarnings("unchecked")
-		    ClaimedResidence residence = ClaimedResidence.load((Map<String, Object>) res.getValue(), null);
-		    if (residence.getPermissions().getOwnerUUID().toString().equals(Residence.getServerLandUUID()) && !residence.getOwner().equalsIgnoreCase(
-			"Server land") && !residence.getOwner().equalsIgnoreCase(Residence.getServerLandname()))
-			continue;
+	if (root == null)
+	    return retRes;
 
-		    if (residence.getOwner().equalsIgnoreCase("Server land")) {
-			residence.getPermissions().setOwner(Residence.getServerLandname(), false);
-		    }
+	int i = 0;
+	int y = 0;
+	for (Entry<String, Object> res : root.entrySet()) {
+	    if (i == 100 & Residence.getConfigManager().isUUIDConvertion())
+		Bukkit.getConsoleSender().sendMessage("[Residence] " + worldName + " UUID conversion done: " + y + " of " + root.size());
+	    if (i >= 100)
+		i = 0;
+	    i++;
+	    y++;
+	    try {
+		@SuppressWarnings("unchecked")
+		ClaimedResidence residence = ClaimedResidence.load((Map<String, Object>) res.getValue(), null, plugin);
+		if (residence.getPermissions().getOwnerUUID().toString().equals(Residence.getServerLandUUID()) &&
+		    !residence.getOwner().equalsIgnoreCase("Server land") &&
+		    !residence.getOwner().equalsIgnoreCase(Residence.getServerLandname()))
+		    continue;
 
-		    for (ChunkRef chunk : getChunks(residence)) {
-			List<String> ress = new ArrayList<>();
-			if (retRes.containsKey(chunk)) {
-			    ress.addAll(retRes.get(chunk));
-			}
-			ress.add(res.getKey());
-			retRes.put(chunk, ress);
-		    }
+		if (residence.getOwner().equalsIgnoreCase("Server land")) {
+		    residence.getPermissions().setOwner(Residence.getServerLandname(), false);
+		}
 
-		    resm.residences.put(res.getKey(), residence);
-		} catch (Exception ex) {
-		    System.out.print("[Residence] Failed to load residence (" + res.getKey() + ")! Reason:" + ex.getMessage() + " Error Log:");
-		    Logger.getLogger(ResidenceManager.class.getName()).log(Level.SEVERE, null, ex);
-		    if (Residence.getConfigManager().stopOnSaveError()) {
-			throw (ex);
+		for (ChunkRef chunk : getChunks(residence)) {
+		    List<String> ress = new ArrayList<>();
+		    if (retRes.containsKey(chunk)) {
+			ress.addAll(retRes.get(chunk));
 		    }
+		    ress.add(res.getKey());
+		    retRes.put(chunk, ress);
+		}
+
+		resm.residences.put(res.getKey(), residence);
+	    } catch (Exception ex) {
+		System.out.print("[Residence] Failed to load residence (" + res.getKey() + ")! Reason:" + ex.getMessage() + " Error Log:");
+		Logger.getLogger(ResidenceManager.class.getName()).log(Level.SEVERE, null, ex);
+		if (Residence.getConfigManager().stopOnSaveError()) {
+		    throw (ex);
 		}
 	    }
 	}
+
 	return retRes;
     }
 
@@ -688,6 +748,11 @@ public class ResidenceManager {
     }
 
     public boolean renameResidence(Player player, String oldName, String newName, boolean resadmin) {
+	if (!player.hasPermission("residence.rename")) {
+	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("NoPermission"));
+	    return false;
+	}
+
 	if (!Residence.validName(newName)) {
 	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("InvalidNameCharacters"));
 	    return false;
@@ -701,19 +766,31 @@ public class ResidenceManager {
 	}
 	if (res.getPermissions().hasResidencePermission(player, true) || resadmin) {
 	    if (res.getParent() == null) {
-		if (residences.containsKey(newName)) {
-		    if (player != null)
-			player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("ResidenceAlreadyExists", ChatColor.YELLOW + newName + ChatColor.RED));
-		    return false;
+		if (Residence.getConfigManager().isResCreateCaseSensitive()) {
+		    if (residences.containsKey(newName)) {
+			if (player != null) {
+			    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("ResidenceAlreadyExists", ChatColor.YELLOW + newName + ChatColor.RED));
+			}
+			return false;
+		    }
+		} else {
+		    for (Entry<String, ClaimedResidence> one : residences.entrySet()) {
+			if (one.getKey().equalsIgnoreCase(newName)) {
+			    if (player != null) {
+				player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("ResidenceAlreadyExists", ChatColor.YELLOW + one.getKey()
+				    + ChatColor.RED));
+			    }
+			    return false;
+			}
+		    }
 		}
-
 		ResidenceRenameEvent resevent = new ResidenceRenameEvent(res, newName, oldName);
 		Residence.getServ().getPluginManager().callEvent(resevent);
 		removeChunkList(oldName);
 		residences.put(newName, res);
 		residences.remove(oldName);
 
-		PlayerManager.renameResidence(player.getName(), oldName, newName);
+		Residence.getPlayerManager().renameResidence(player.getName(), oldName, newName);
 
 		calculateChunks(newName);
 		if (Residence.getConfigManager().useLeases()) {
@@ -774,8 +851,8 @@ public class ResidenceManager {
 	    }
 	}
 
-	PlayerManager.removeResFromPlayer(reqPlayer, residence);
-	PlayerManager.addResidence(targPlayer, res);
+	Residence.getPlayerManager().removeResFromPlayer(reqPlayer, residence);
+	Residence.getPlayerManager().addResidence(targPlayer, res);
 
 	res.getPermissions().setOwner(giveplayer.getName(), true);
 	// Fix phrases here
@@ -803,7 +880,7 @@ public class ResidenceManager {
 	    sender.sendMessage(ChatColor.RED + "Removed " + ChatColor.YELLOW + count + ChatColor.RED + " residences in world: " + ChatColor.YELLOW + world);
 	}
 
-	PlayerManager.fillList();
+	Residence.getPlayerManager().fillList();
     }
 
     public int getResidenceCount() {

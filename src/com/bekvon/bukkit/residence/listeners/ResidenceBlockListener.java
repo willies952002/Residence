@@ -11,13 +11,18 @@ import java.util.List;
 import org.bukkit.ChatColor;
 
 import com.bekvon.bukkit.residence.protection.FlagPermissions;
+import com.bekvon.bukkit.residence.utils.Debug;
+
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Snowman;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.block.BlockState;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
+import org.bukkit.event.block.BlockFormEvent;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockIgniteEvent.IgniteCause;
@@ -25,8 +30,6 @@ import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 
-import com.bekvon.bukkit.residence.NewLanguage;
-import com.bekvon.bukkit.residence.PlayerManager;
 import com.bekvon.bukkit.residence.Residence;
 import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 
@@ -36,7 +39,9 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockSpreadEvent;
+import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
+import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.ItemStack;
 
 /**
@@ -45,13 +50,31 @@ import org.bukkit.inventory.ItemStack;
  */
 public class ResidenceBlockListener implements Listener {
 
-    private static List<String> MessageInformed = new ArrayList<String>();
-    private static List<String> ResCreated = new ArrayList<String>();
+    private List<String> MessageInformed = new ArrayList<String>();
+    private List<String> ResCreated = new ArrayList<String>();
 
-    public static final String BlockMetadata = "ResFallingBlock";
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onTreeGrow(StructureGrowEvent event) {
+	ClaimedResidence startRes = Residence.getResidenceManager().getByLoc(event.getLocation());
+	List<BlockState> blocks = event.getBlocks();
+	int i = 0;
+	for (BlockState one : blocks) {
+	    ClaimedResidence targetRes = Residence.getResidenceManager().getByLoc(one.getLocation());
+	    if (startRes == null && targetRes != null ||
+		targetRes != null && startRes != null && !startRes.getName().equals(targetRes.getName()) && !startRes.isOwner(targetRes.getOwner())) {
+		BlockState matas = blocks.get(i);
+		matas.setType(Material.AIR);
+		blocks.set(i, matas);
+	    }
+	    i++;
+	}
+    }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
+
+	Debug.D("destroy event");
+	
 	Player player = event.getPlayer();
 	if (Residence.isResAdminOn(player)) {
 	    return;
@@ -80,10 +103,26 @@ public class ResidenceBlockListener implements Listener {
 
 	boolean hasdestroy = perms.playerHas(pname, player.getWorld().getName(), "destroy", perms.playerHas(pname, player.getWorld().getName(), "build", true));
 	boolean hasContainer = perms.playerHas(pname, player.getWorld().getName(), "container", true);
-	if (!hasdestroy || (!hasContainer && mat == Material.CHEST)) {
+	if (!hasdestroy) {
+	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("FlagDeny", "destroy"));
 	    event.setCancelled(true);
-	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("NoPermission"));
+	} else if (!hasContainer && mat == Material.CHEST) {
+	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("FlagDeny", "container"));
+	    event.setCancelled(true);
+	}
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onBlockForm(BlockFormEvent event) {
+
+	if (!(event instanceof EntityBlockFormEvent))
 	    return;
+
+	if (((EntityBlockFormEvent) event).getEntity() instanceof Snowman) {
+	    FlagPermissions perms = Residence.getPermsByLoc(event.getBlock().getLocation());
+	    if (!perms.has("snowtrail", true)) {
+		event.setCancelled(true);
+	    }
 	}
     }
 
@@ -139,14 +178,14 @@ public class ResidenceBlockListener implements Listener {
 	if (block.getType() != Material.CHEST && block.getType() != Material.TRAPPED_CHEST)
 	    return;
 
-	ArrayList<String> list = PlayerManager.getResidenceList(player.getName());
+	ArrayList<String> list = Residence.getPlayerManager().getResidenceList(player.getName());
 	if (list.size() != 0)
 	    return;
 
 	if (MessageInformed.contains(player.getName()))
 	    return;
 
-	player.sendMessage(NewLanguage.getMessage("Language.NewPlayerInfo"));
+	player.sendMessage(Residence.getLM().getMessage("Language.NewPlayerInfo"));
 
 	MessageInformed.add(player.getName());
     }
@@ -164,7 +203,7 @@ public class ResidenceBlockListener implements Listener {
 	if (block.getType() != Material.CHEST && block.getType() != Material.TRAPPED_CHEST)
 	    return;
 
-	ArrayList<String> list = PlayerManager.getResidenceList(player.getName());
+	ArrayList<String> list = Residence.getPlayerManager().getResidenceList(player.getName());
 	if (list.size() != 0)
 	    return;
 
@@ -174,9 +213,9 @@ public class ResidenceBlockListener implements Listener {
 	Location loc = block.getLocation();
 
 	Residence.getSelectionManager().placeLoc1(player, new Location(loc.getWorld(), loc.getBlockX() - Residence.getConfigManager().getNewPlayerRangeX(), loc
-	    .getBlockY() - Residence.getConfigManager().getNewPlayerRangeY(), loc.getBlockZ() - Residence.getConfigManager().getNewPlayerRangeZ()));
+	    .getBlockY() - Residence.getConfigManager().getNewPlayerRangeY(), loc.getBlockZ() - Residence.getConfigManager().getNewPlayerRangeZ()), true);
 	Residence.getSelectionManager().placeLoc2(player, new Location(loc.getWorld(), loc.getBlockX() + Residence.getConfigManager().getNewPlayerRangeX(), loc
-	    .getBlockY() + Residence.getConfigManager().getNewPlayerRangeY(), loc.getBlockZ() + Residence.getConfigManager().getNewPlayerRangeZ()));
+	    .getBlockY() + Residence.getConfigManager().getNewPlayerRangeY(), loc.getBlockZ() + Residence.getConfigManager().getNewPlayerRangeZ()), true);
 
 	boolean created = Residence.getResidenceManager().addResidence(player, player.getName(), Residence.getSelectionManager().getPlayerLoc1(player.getName()),
 	    Residence.getSelectionManager().getPlayerLoc2(player.getName()), Residence.getConfigManager().isNewPlayerFree());
@@ -186,6 +225,7 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
+
 	Player player = event.getPlayer();
 	if (Residence.isResAdminOn(player)) {
 	    return;
@@ -216,7 +256,7 @@ public class ResidenceBlockListener implements Listener {
 	boolean hasplace = perms.playerHas(pname, player.getWorld().getName(), "place", perms.playerHas(pname, player.getWorld().getName(), "build", true));
 	if (!hasplace) {
 	    event.setCancelled(true);
-	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("NoPermission"));
+	    player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("FlagDeny", "place"));
 	    return;
 	}
     }
@@ -293,6 +333,7 @@ public class ResidenceBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockFromTo(BlockFromToEvent event) {
+
 	FlagPermissions perms = Residence.getPermsByLoc(event.getToBlock().getLocation());
 	boolean hasflow = perms.has("flow", true);
 	Material mat = event.getBlock().getType();
@@ -397,7 +438,7 @@ public class ResidenceBlockListener implements Listener {
 	    FlagPermissions perms = Residence.getPermsByLocForPlayer(event.getBlock().getLocation(), player);
 	    if (player != null && !perms.playerHas(player.getName(), player.getWorld().getName(), "ignite", true) && !Residence.isResAdminOn(player)) {
 		event.setCancelled(true);
-		player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("NoPermission"));
+		player.sendMessage(ChatColor.RED + Residence.getLanguage().getPhrase("FlagDeny", "ignite"));
 	    }
 	} else {
 	    FlagPermissions perms = Residence.getPermsByLoc(event.getBlock().getLocation());
